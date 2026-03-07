@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #f9f2f3;
+  --color-brand-100: #f3e3e5;
+  --color-brand-200: #e6c7cb;
+  --color-brand-300: #d6a4ab;
+  --color-brand-400: #bf7883;
+  --color-brand-500: #a95c67;
+  --color-brand-600: #9f4f59;
+  --color-brand-700: #94454e;
+  --color-brand-800: #7d3941;
+  --color-brand-900: #52242a;
+  --color-brand-950: #2f1418;
+}
+
+@layer utilities {
+  .apple-panel {
+    @apply bg-white border border-slate-100/60 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)];
+  }
+
+  .apple-card {
+    @apply bg-white border border-slate-100/60 rounded-2xl shadow-[0_4px_20px_rgb(0,0,0,0.03)];
+  }
+
+  .apple-pill {
+    @apply inline-flex items-center rounded-full bg-slate-50 border border-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600;
+  }
+
+  .stage-bg {
+    background:
+      radial-gradient(40rem 20rem at 15% 10%, rgba(148, 163, 184, 0.16), transparent 70%),
+      radial-gradient(35rem 20rem at 85% 15%, rgba(125, 211, 252, 0.14), transparent 70%),
+      radial-gradient(35rem 20rem at 50% 95%, rgba(196, 181, 253, 0.14), transparent 70%);
+  }
+
+  .stage-entrance {
+    animation: stage-enter 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .stage-entrance-delay {
+    animation: stage-enter 740ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 120ms;
+  }
+
+  .stage-float {
+    animation: stage-float 4800ms ease-in-out infinite;
+  }
+
+  .result-pass-title {
+    animation: result-pass-title 780ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .result-pass-glow {
+    animation: result-pass-glow 2600ms ease-in-out infinite;
+  }
+
+  .result-fail-title {
+    animation: result-fail-title 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .result-fail-pulse {
+    animation: result-fail-pulse 2400ms ease-in-out infinite;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 20px;
+  }
+}
+
+@keyframes stage-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes stage-float {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.002);
+  }
+}
+
+@keyframes result-pass-title {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes result-pass-glow {
+  0%, 100% {
+    text-shadow: 0 0 0 rgba(16, 185, 129, 0);
+  }
+  50% {
+    text-shadow: 0 0 28px rgba(110, 231, 183, 0.28);
+  }
+}
+
+@keyframes result-fail-title {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+    filter: blur(5px);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(0) scale(1.01);
+    filter: blur(0);
+  }
+  70% {
+    transform: translateX(-4px);
+  }
+  85% {
+    transform: translateX(3px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes result-fail-pulse {
+  0%, 100% {
+    text-shadow: 0 0 0 rgba(148, 69, 78, 0);
+  }
+  50% {
+    text-shadow: 0 0 22px rgba(148, 69, 78, 0.35);
+  }
+}
+
+.page-fade-slide {
+  animation: page-fade-slide 920ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes page-fade-slide {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.995);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
