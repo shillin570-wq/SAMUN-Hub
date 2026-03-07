@@ -166,3 +166,20 @@
     filter: blur(0);
   }
 }
+
+.fullscreen-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+}
+
+.fullscreen-stage {
+  width: min(100vw, calc(100vh * 16 / 9));
+  height: min(100vh, calc(100vw * 9 / 16));
+}
+
+.fullscreen-stage-fill {
+  width: 100vw;
+  height: 100vh;
+}

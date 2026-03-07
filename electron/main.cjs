@@ -1,5 +1,5 @@
 const path = require('path');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 
 const BASE_WIDTH = 1366;
 const BASE_HEIGHT = 900;
@@ -17,6 +17,17 @@ function getAdaptiveZoomFactor(win) {
 function applyAdaptiveZoom(win) {
   const zoomFactor = getAdaptiveZoomFactor(win);
   win.webContents.setZoomFactor(zoomFactor);
+}
+
+function getTargetWindow(event) {
+  return BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+}
+
+function getWindowState(win) {
+  return {
+    isFullScreen: win?.isFullScreen() ?? false,
+    isResizable: win?.isResizable() ?? true,
+  };
 }
 
 function createWindow() {
@@ -45,9 +56,30 @@ function createWindow() {
   win.on('resize', () => {
     applyAdaptiveZoom(win);
   });
+
+  win.on('enter-full-screen', () => {
+    win.webContents.send('window-control:fullscreen-changed', true);
+  });
+
+  win.on('leave-full-screen', () => {
+    win.webContents.send('window-control:fullscreen-changed', false);
+  });
 }
 
 app.whenReady().then(() => {
+  ipcMain.handle('window-control:get-state', (event) => {
+    const win = getTargetWindow(event);
+    return getWindowState(win);
+  });
+
+  ipcMain.handle('window-control:set-full-screen', (event, enabled) => {
+    const win = getTargetWindow(event);
+    if (win) {
+      win.setFullScreen(Boolean(enabled));
+    }
+    return getWindowState(win);
+  });
+
   createWindow();
 
   app.on('activate', () => {

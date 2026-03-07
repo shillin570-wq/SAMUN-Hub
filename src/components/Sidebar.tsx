@@ -11,7 +11,10 @@ import {
   FolderOpen,
   Save,
   Trash2,
-  BookOpen
+  BookOpen,
+  Maximize2,
+  Minimize2,
+  StretchHorizontal
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Modal } from './ui/Modal';
@@ -20,7 +23,19 @@ import { Input } from './ui/Input';
 import appLogo from '../assets/app-logo.png';
 import { softwareGuideSections } from '../content/softwareGuide';
 
-export function Sidebar() {
+interface SidebarProps {
+  isFullScreen: boolean;
+  onToggleFullScreen: () => void;
+  forceFullscreenFill: boolean;
+  onToggleForceFullscreenFill: () => void;
+}
+
+export function Sidebar({
+  isFullScreen,
+  onToggleFullScreen,
+  forceFullscreenFill,
+  onToggleForceFullscreenFill,
+}: SidebarProps) {
   const { 
     currentPage, 
     setCurrentPage, 
@@ -71,7 +86,7 @@ export function Sidebar() {
 
   return (
     <>
-      <div className="w-72 h-screen bg-brand-800 text-brand-100/85 flex flex-col flex-shrink-0">
+      <div className="w-72 h-full bg-brand-800 text-brand-100/85 flex flex-col flex-shrink-0">
         <div className="p-6 border-b border-brand-900/70">
           <div className="flex items-center gap-3">
             <img
@@ -179,6 +194,25 @@ export function Sidebar() {
           </div>
           
           <ul className="space-y-1 px-3 mb-4">
+            <li>
+              <button
+                onClick={onToggleFullScreen}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-[15px] font-medium hover:bg-brand-900/75 hover:text-white transition-colors"
+              >
+                {isFullScreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+                {isFullScreen ? '退出全屏' : '进入全屏'}
+              </button>
+            </li>
+            <li>
+              <button
+                onClick={onToggleForceFullscreenFill}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-[15px] font-medium hover:bg-brand-900/75 hover:text-white transition-colors"
+                title="开启后全屏时无条件铺满，关闭则按16:9白边适配"
+              >
+                <StretchHorizontal className="w-5 h-5" />
+                强制占满：{forceFullscreenFill ? '开' : '关'}
+              </button>
+            </li>
             <li>
               <button
                 onClick={() => setIsManageModalOpen(true)}
