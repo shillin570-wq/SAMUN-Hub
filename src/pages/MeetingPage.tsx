@@ -85,6 +85,7 @@ export function MeetingPage() {
   const [discussionFileName, setDiscussionFileName] = useState('');
   const [isAgendaSelectorCollapsed, setIsAgendaSelectorCollapsed] = useState(true);
   const [collapsedAgendaGroupIds, setCollapsedAgendaGroupIds] = useState<string[]>([]);
+  const [isStateHydrated, setIsStateHydrated] = useState(false);
   const lastPersistAtRef = useRef(0);
   const meetingSignature = useMemo(
     () => [meetingInfo.committee, meetingInfo.topic, meetingInfo.recorder].join('||'),
@@ -209,7 +210,10 @@ export function MeetingPage() {
 
   useEffect(() => {
     const rawState = localStorage.getItem(MEETING_PAGE_STATE_KEY);
-    if (!rawState) return;
+    if (!rawState) {
+      setIsStateHydrated(true);
+      return;
+    }
 
     try {
       const parsed = JSON.parse(rawState) as PersistedMeetingPageState;
@@ -233,10 +237,13 @@ export function MeetingPage() {
       setIsRunning(false);
     } catch (error) {
       console.error('Failed to parse meeting page state', error);
+    } finally {
+      setIsStateHydrated(true);
     }
   }, [meetingSignature]);
 
   useEffect(() => {
+    if (!isStateHydrated) return;
     const now = Date.now();
     if (isRunning && now - lastPersistAtRef.current < MEETING_PAGE_PERSIST_THROTTLE_MS) {
       return;
@@ -271,6 +278,40 @@ export function MeetingPage() {
     selectedAgendaId,
     discussionFileName,
     isRunning,
+    isStateHydrated,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (!isStateHydrated) return;
+      const stateToPersist: PersistedMeetingPageState = {
+        meetingSignature,
+        speakers,
+        timeLeft,
+        totalElapsed,
+        totalDurationInput,
+        totalCountdownSeconds,
+        showTotalTimer,
+        customTime,
+        discussionMode,
+        selectedAgendaId,
+        discussionFileName,
+      };
+      localStorage.setItem(MEETING_PAGE_STATE_KEY, JSON.stringify(stateToPersist));
+    };
+  }, [
+    isStateHydrated,
+    meetingSignature,
+    speakers,
+    timeLeft,
+    totalElapsed,
+    totalDurationInput,
+    totalCountdownSeconds,
+    showTotalTimer,
+    customTime,
+    discussionMode,
+    selectedAgendaId,
+    discussionFileName,
   ]);
 
   const formatTime = (seconds: number) => {

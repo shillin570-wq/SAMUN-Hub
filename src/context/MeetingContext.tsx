@@ -1,6 +1,19 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { MeetingInfo, CountryRight, AgendaItem, PageType, MeetingArchive } from '../types';
 
+const SESSION_STATE_KEY = 'samun_session_state_v1';
+
+interface PersistedSessionState {
+  currentPage: PageType;
+  hasMeetingAccess: boolean;
+  currentArchiveId: string | null;
+  meetingInfo: MeetingInfo;
+  countries: string[];
+  attendance: Record<string, boolean>;
+  countryRights: Record<string, CountryRight>;
+  agendaItems: AgendaItem[];
+}
+
 interface MeetingContextType {
   currentPage: PageType;
   setCurrentPage: (page: PageType) => void;
@@ -67,6 +80,7 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [countryRights, setCountryRights] = useState<Record<string, CountryRight>>({});
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
   const [archives, setArchives] = useState<MeetingArchive[]>([]);
+  const [isSessionHydrated, setIsSessionHydrated] = useState(false);
 
   // Load archives from localStorage on mount
   useEffect(() => {
@@ -79,6 +93,55 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }
   }, []);
+
+  useEffect(() => {
+    const rawSessionState = localStorage.getItem(SESSION_STATE_KEY);
+    if (!rawSessionState) {
+      setIsSessionHydrated(true);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(rawSessionState) as PersistedSessionState;
+      if (parsed.currentPage) setCurrentPage(parsed.currentPage);
+      setHasMeetingAccess(Boolean(parsed.hasMeetingAccess));
+      setCurrentArchiveId(parsed.currentArchiveId ?? null);
+      if (parsed.meetingInfo) setMeetingInfo(parsed.meetingInfo);
+      if (Array.isArray(parsed.countries)) setCountries(parsed.countries);
+      if (parsed.attendance && typeof parsed.attendance === 'object') setAttendance(parsed.attendance);
+      if (parsed.countryRights && typeof parsed.countryRights === 'object') setCountryRights(parsed.countryRights);
+      if (Array.isArray(parsed.agendaItems)) setAgendaItems(parsed.agendaItems);
+    } catch (error) {
+      console.error('Failed to parse meeting session state', error);
+    } finally {
+      setIsSessionHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isSessionHydrated) return;
+    const sessionStateToPersist: PersistedSessionState = {
+      currentPage,
+      hasMeetingAccess,
+      currentArchiveId,
+      meetingInfo,
+      countries,
+      attendance,
+      countryRights,
+      agendaItems,
+    };
+    localStorage.setItem(SESSION_STATE_KEY, JSON.stringify(sessionStateToPersist));
+  }, [
+    isSessionHydrated,
+    currentPage,
+    hasMeetingAccess,
+    currentArchiveId,
+    meetingInfo,
+    countries,
+    attendance,
+    countryRights,
+    agendaItems,
+  ]);
 
   const saveArchive = useCallback(() => {
     const archiveId = currentArchiveId ?? Date.now().toString();
