@@ -12,6 +12,8 @@ import {
   Save,
   Trash2,
   BookOpen,
+  NotebookText,
+  House,
   Maximize2,
   Minimize2,
   StretchHorizontal
@@ -180,6 +182,22 @@ export function Sidebar({
             </li>
             <li>
               <button
+                onClick={() => setCurrentPage('meeting-records')}
+                disabled={!hasMeetingAccess}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2 rounded-md text-[15px] font-medium transition-colors",
+                  currentPage === 'meeting-records'
+                    ? "bg-brand-700 text-white"
+                    : "hover:bg-brand-900/75 hover:text-white",
+                  !hasMeetingAccess && "opacity-40 cursor-not-allowed hover:bg-transparent hover:text-brand-100/80"
+                )}
+              >
+                <NotebookText className="w-5 h-5" />
+                会议记录
+              </button>
+            </li>
+            <li>
+              <button
                 onClick={() => setIsGuideModalOpen(true)}
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-[15px] font-medium hover:bg-brand-900/75 hover:text-white transition-colors"
               >
@@ -194,6 +212,15 @@ export function Sidebar({
           </div>
           
           <ul className="space-y-1 px-3 mb-4">
+            <li>
+              <button
+                onClick={() => setCurrentPage('entry')}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-[15px] font-medium hover:bg-brand-900/75 hover:text-white transition-colors"
+              >
+                <House className="w-5 h-5" />
+                回到封面
+              </button>
+            </li>
             <li>
               <button
                 onClick={onToggleFullScreen}

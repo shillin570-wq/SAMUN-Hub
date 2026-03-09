@@ -68,7 +68,7 @@ const getCountrySearchTokens = (country: string) => {
 };
 
 export function MeetingPage() {
-  const { meetingInfo, countries, attendance, agendaItems } = useMeeting();
+  const { meetingInfo, countries, attendance, agendaItems, addMeetingLog } = useMeeting();
   const [speakers, setSpeakers] = useState<string[]>([]);
   const [newSpeaker, setNewSpeaker] = useState('');
   const [isSpeakerSearchOpen, setIsSpeakerSearchOpen] = useState(false);
@@ -96,6 +96,8 @@ export function MeetingPage() {
   const absoluteMajority = Math.ceil(presentCount * 2 / 3);
   const simpleMajority = Math.floor(presentCount / 2) + 1;
   const currentSpeaker = useMemo(() => speakers[0], [speakers]);
+  const speakerSet = useMemo(() => new Set(speakers), [speakers]);
+  const collapsedAgendaGroupIdSet = useMemo(() => new Set(collapsedAgendaGroupIds), [collapsedAgendaGroupIds]);
   const selectedAgenda = useMemo(
     () => agendaItems.find((item) => String(item.id) === selectedAgendaId),
     [agendaItems, selectedAgendaId]
@@ -137,11 +139,11 @@ export function MeetingPage() {
         const isHiddenByParent =
           item.level === 2 &&
           parentLevelOneId !== null &&
-          collapsedAgendaGroupIds.includes(parentLevelOneId);
+          collapsedAgendaGroupIdSet.has(parentLevelOneId);
         return { item, parentLevelOneId, isHiddenByParent };
       })
       .filter((row) => !row.isHiddenByParent);
-  }, [agendaItems, collapsedAgendaGroupIds]);
+  }, [agendaItems, collapsedAgendaGroupIdSet]);
   const getAgendaStatusText = (status: 'normal' | 'postponed' | 'ended') => {
     if (status === 'postponed') return '延置';
     if (status === 'ended') return '结束';
@@ -165,14 +167,14 @@ export function MeetingPage() {
   const speakerSuggestions = useMemo(() => {
     const keyword = normalizeKeyword(newSpeaker.trim());
     return countries
-      .filter((country) => !speakers.includes(country))
+      .filter((country) => !speakerSet.has(country))
       .filter((country) => {
         if (!keyword) return true;
         const searchTokens = countrySearchIndex.get(country) ?? [];
         return searchTokens.some((token) => token.includes(keyword));
       })
       .slice(0, 8);
-  }, [countries, newSpeaker, speakers, countrySearchIndex]);
+  }, [countries, newSpeaker, speakerSet, countrySearchIndex]);
 
   useEffect(() => {
     if (!isSpeakerSearchOpen || speakerSuggestions.length === 0) {
@@ -329,8 +331,8 @@ export function MeetingPage() {
 
   const handleAddSpeaker = (inputValue?: string) => {
     const value = (inputValue ?? newSpeaker).trim();
-    if (!value || speakers.includes(value)) return;
-    setSpeakers([...speakers, value]);
+    if (!value || speakerSet.has(value)) return;
+    setSpeakers((prev) => [...prev, value]);
     setNewSpeaker('');
     setIsSpeakerSearchOpen(false);
     setHighlightedSuggestionIndex(-1);
@@ -378,7 +380,13 @@ export function MeetingPage() {
 
   const handleNextSpeaker = () => {
     if (speakers.length === 0) return;
-    setSpeakers(speakers.slice(1));
+    const speaker = speakers[0];
+    addMeetingLog(
+      'speech',
+      `发言议题：${currentDiscussion}`,
+      `${speaker} 发言`
+    );
+    setSpeakers((prev) => prev.slice(1));
     setIsRunning(false);
     setTimeLeft(parseInt(customTime, 10) || 120);
   };
@@ -536,7 +544,7 @@ export function MeetingPage() {
                         const isLevelOne = item.level === 1;
                         const levelOneChildCount = agendaLevelOneChildCountMap[item.id] ?? 0;
                         const hasChildren = isLevelOne && levelOneChildCount > 0;
-                        const isGroupCollapsed = collapsedAgendaGroupIds.includes(itemId);
+                        const isGroupCollapsed = collapsedAgendaGroupIdSet.has(itemId);
                         return (
                           <button
                             key={item.id}

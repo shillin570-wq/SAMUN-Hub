@@ -12,6 +12,9 @@ const AgendaArrangementPage = lazy(() =>
   import('./pages/AgendaArrangementPage').then((m) => ({ default: m.AgendaArrangementPage }))
 );
 const VotingPage = lazy(() => import('./pages/VotingPage').then((m) => ({ default: m.VotingPage })));
+const MeetingRecordsPage = lazy(() =>
+  import('./pages/MeetingRecordsPage').then((m) => ({ default: m.MeetingRecordsPage }))
+);
 const FULLSCREEN_ASPECT_TOLERANCE = 0.1;
 const FORCE_FULLSCREEN_FILL_KEY = 'samun_force_fullscreen_fill';
 
@@ -29,6 +32,7 @@ function MainContent() {
       case 'meeting': return <MeetingPage />;
       case 'agenda-arrangement': return <AgendaArrangementPage />;
       case 'voting': return <VotingPage />;
+      case 'meeting-records': return <MeetingRecordsPage />;
       default: return <EntryGatePage />;
     }
   };

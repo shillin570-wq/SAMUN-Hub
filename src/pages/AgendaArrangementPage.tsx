@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useMeeting } from '../context/MeetingContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -19,7 +19,7 @@ const sanitizeAgendaTitle = (title: string) =>
 type DragInsertPosition = 'before' | 'after' | 'end';
 
 export function AgendaArrangementPage() {
-  const { agendaItems, setAgendaItems, setCurrentPage } = useMeeting();
+  const { agendaItems, setAgendaItems, setCurrentPage, addMeetingLog } = useMeeting();
   const [newTitle, setNewTitle] = useState('');
   const [newLevel, setNewLevel] = useState<1 | 2>(1);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -27,25 +27,35 @@ export function AgendaArrangementPage() {
   const [draggingItemId, setDraggingItemId] = useState<number | null>(null);
   const [dragIndicator, setDragIndicator] = useState<{ itemId: number; position: Exclude<DragInsertPosition, 'end'> } | null>(null);
   const [isDraggingToEnd, setIsDraggingToEnd] = useState(false);
+  const formatAgendaItem = (item: { level: 1 | 2; title: string }) =>
+    `${item.level === 1 ? '一级' : '二级'}：${item.title}`;
 
   const handleAdd = () => {
     const cleanedTitle = sanitizeAgendaTitle(newTitle);
-    if (cleanedTitle) {
-      setAgendaItems([
-        ...agendaItems,
-        {
-          id: Date.now(),
-          level: newLevel,
-          title: cleanedTitle,
-          status: 'normal'
-        }
-      ]);
-      setNewTitle('');
+    if (!cleanedTitle) {
+      alert('请输入有效的议程标题后再添加。');
+      return;
     }
+    const nextItem = {
+      id: Date.now(),
+      level: newLevel,
+      title: cleanedTitle,
+      status: 'normal' as const
+    };
+    setAgendaItems([
+      ...agendaItems,
+      nextItem
+    ]);
+    addMeetingLog('agenda-change', '新增议程项', formatAgendaItem(nextItem));
+    setNewTitle('');
   };
 
   const handleRemove = (id: number) => {
+    const target = agendaItems.find((item) => item.id === id);
     setAgendaItems(agendaItems.filter(item => item.id !== id));
+    if (target) {
+      addMeetingLog('agenda-change', '删除议程项', formatAgendaItem(target));
+    }
   };
 
   const handleStatusChange = (id: number, status: 'normal' | 'postponed' | 'ended') => {
@@ -61,6 +71,7 @@ export function AgendaArrangementPage() {
             : item
         )
       );
+      addMeetingLog('agenda-change', '修改议程状态', `${formatAgendaItem(targetItem)} -> ${status}`);
       return;
     }
 
@@ -78,6 +89,11 @@ export function AgendaArrangementPage() {
           : item
       )
     );
+    addMeetingLog(
+      'agenda-change',
+      '修改一级议程组状态',
+      `${formatAgendaItem(targetItem)}（含 ${linkedIds.size - 1} 个二级项） -> ${status}`
+    );
   };
 
   const moveItem = (index: number, direction: -1 | 1) => {
@@ -87,6 +103,11 @@ export function AgendaArrangementPage() {
     newItems[index] = newItems[index + direction];
     newItems[index + direction] = temp;
     setAgendaItems(newItems);
+    addMeetingLog(
+      'agenda-change',
+      '调整议程序列',
+      `${formatAgendaItem(temp)} 向${direction === -1 ? '上' : '下'}移动`
+    );
   };
 
   const getBlockRangeIn = (
@@ -137,6 +158,11 @@ export function AgendaArrangementPage() {
       ...block,
       ...remaining.slice(safeInsertIndex),
     ]);
+    addMeetingLog(
+      'agenda-change',
+      '拖拽调整议程序列',
+      `移动 ${block.length} 项到${position === 'end' ? '末尾' : position === 'before' ? '目标前' : '目标后'}`
+    );
   };
 
   const handleImportMyAgenda = () => {
@@ -165,17 +191,19 @@ export function AgendaArrangementPage() {
     }
 
     const seed = Date.now();
-    setAgendaItems(parsed.map((item, index) => ({
+    const importedItems = parsed.map((item, index) => ({
       id: seed + index,
       level: item.level,
       title: item.title,
       status: 'normal' as const,
-    })));
+    }));
+    setAgendaItems(importedItems);
+    addMeetingLog('agenda-change', '导入议程单', `导入 ${importedItems.length} 项，覆盖当前议程`);
     setAgendaImportInput('');
     setIsImportModalOpen(false);
   };
 
-  const numberMap = (() => {
+  const numberMap = useMemo(() => {
     let levelOneCounter = 0;
     let levelTwoCounter = 0;
     return agendaItems.reduce<Record<number, string>>((acc, item) => {
@@ -190,7 +218,7 @@ export function AgendaArrangementPage() {
       }
       return acc;
     }, {});
-  })();
+  }, [agendaItems]);
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-300 pb-8">
@@ -402,7 +430,16 @@ export function AgendaArrangementPage() {
               <Button className="w-full" variant="secondary" onClick={() => setIsImportModalOpen(true)}>
                 一键导入我的议程单
               </Button>
-              <Button className="w-full" variant="outline" onClick={() => setAgendaItems([])}>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => {
+                  if (agendaItems.length > 0) {
+                    addMeetingLog('agenda-change', '清空议程单', `清空前共 ${agendaItems.length} 项`);
+                  }
+                  setAgendaItems([]);
+                }}
+              >
                 清空所有议程
               </Button>
             </CardContent>

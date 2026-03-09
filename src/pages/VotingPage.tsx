@@ -79,7 +79,7 @@ const getRequiredVotesByRatio = (
 };
 
 export function VotingPage() {
-  const { meetingInfo, countries, attendance, countryRights, setCountryRights, setCurrentPage } = useMeeting();
+  const { meetingInfo, countries, attendance, countryRights, setCountryRights, setCurrentPage, addMeetingLog } = useMeeting();
   
   const [phase, setPhase] = useState<VotePhase>('setup');
   const [topic, setTopic] = useState('');
@@ -118,6 +118,7 @@ export function VotingPage() {
     [currentRound, votingCountries, skippedCountries]
   );
   const overviewScrollRef = useRef<HTMLDivElement | null>(null);
+  const hasLoggedResultRef = useRef(false);
 
   useEffect(() => {
     if (phase !== 'voting') return;
@@ -155,6 +156,7 @@ export function VotingPage() {
     setCurrentRound(1);
     setCurrentCountryIdx(0);
     setPhase('voting');
+    hasLoggedResultRef.current = false;
   };
 
   const castVote = (type: VoteType) => {
@@ -266,6 +268,17 @@ export function VotingPage() {
 
     return { approve, oppose, abstain, total, valid, casted, passed, hasVeto, finalVotes };
   }, [countryRights, customRule, firstRoundVotes, rule, secondRoundVotes, votingCountries]);
+
+  useEffect(() => {
+    if (phase !== 'result' || hasLoggedResultRef.current) return;
+    hasLoggedResultRef.current = true;
+    const statusText = results.passed ? '通过' : '未通过';
+    addMeetingLog(
+      'vote-result',
+      `投票结果：${topic || '未命名议题'}`,
+      `结果${statusText}；赞成 ${results.approve}，反对 ${results.oppose}，弃权 ${results.abstain}，总计 ${results.total}${results.hasVeto ? '；触发一票否决' : ''}`
+    );
+  }, [phase, results, topic, addMeetingLog]);
 
   const getRuleDescription = (res: VoteResults) => {
     if (rule === 'absolute') {

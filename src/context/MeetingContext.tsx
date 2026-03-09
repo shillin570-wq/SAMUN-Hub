@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
-import { MeetingInfo, CountryRight, AgendaItem, PageType, MeetingArchive } from '../types';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo, useRef } from 'react';
+import { MeetingInfo, CountryRight, AgendaItem, PageType, MeetingArchive, MeetingLog, MeetingLogType } from '../types';
 
 const SESSION_STATE_KEY = 'samun_session_state_v1';
 
@@ -12,6 +12,7 @@ interface PersistedSessionState {
   attendance: Record<string, boolean>;
   countryRights: Record<string, CountryRight>;
   agendaItems: AgendaItem[];
+  meetingLogs: MeetingLog[];
 }
 
 interface MeetingContextType {
@@ -28,6 +29,9 @@ interface MeetingContextType {
   setCountryRights: (rights: Record<string, CountryRight>) => void;
   agendaItems: AgendaItem[];
   setAgendaItems: (items: AgendaItem[]) => void;
+  meetingLogs: MeetingLog[];
+  addMeetingLog: (type: MeetingLogType, title: string, detail: string) => void;
+  clearMeetingLogs: () => void;
   
   // Meeting Management
   archives: MeetingArchive[];
@@ -53,6 +57,9 @@ const defaultContext: MeetingContextType = {
   setCountryRights: () => {},
   agendaItems: [],
   setAgendaItems: () => {},
+  meetingLogs: [],
+  addMeetingLog: () => {},
+  clearMeetingLogs: () => {},
   archives: [],
   saveArchive: () => {},
   loadArchive: () => {},
@@ -79,8 +86,11 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
   const [countryRights, setCountryRights] = useState<Record<string, CountryRight>>({});
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
+  const [meetingLogs, setMeetingLogs] = useState<MeetingLog[]>([]);
   const [archives, setArchives] = useState<MeetingArchive[]>([]);
   const [isSessionHydrated, setIsSessionHydrated] = useState(false);
+  const persistTimerRef = useRef<number | null>(null);
+  const lastSessionSnapshotRef = useRef('');
 
   // Load archives from localStorage on mount
   useEffect(() => {
@@ -111,6 +121,7 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (parsed.attendance && typeof parsed.attendance === 'object') setAttendance(parsed.attendance);
       if (parsed.countryRights && typeof parsed.countryRights === 'object') setCountryRights(parsed.countryRights);
       if (Array.isArray(parsed.agendaItems)) setAgendaItems(parsed.agendaItems);
+      if (Array.isArray(parsed.meetingLogs)) setMeetingLogs(parsed.meetingLogs);
     } catch (error) {
       console.error('Failed to parse meeting session state', error);
     } finally {
@@ -129,8 +140,26 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
       attendance,
       countryRights,
       agendaItems,
+      meetingLogs,
     };
-    localStorage.setItem(SESSION_STATE_KEY, JSON.stringify(sessionStateToPersist));
+    const snapshot = JSON.stringify(sessionStateToPersist);
+    if (snapshot === lastSessionSnapshotRef.current) return;
+
+    if (persistTimerRef.current !== null) {
+      window.clearTimeout(persistTimerRef.current);
+    }
+    persistTimerRef.current = window.setTimeout(() => {
+      localStorage.setItem(SESSION_STATE_KEY, snapshot);
+      lastSessionSnapshotRef.current = snapshot;
+      persistTimerRef.current = null;
+    }, 250);
+
+    return () => {
+      if (persistTimerRef.current !== null) {
+        window.clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+    };
   }, [
     isSessionHydrated,
     currentPage,
@@ -141,7 +170,23 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
     attendance,
     countryRights,
     agendaItems,
+    meetingLogs,
   ]);
+
+  const addMeetingLog = useCallback((type: MeetingLogType, title: string, detail: string) => {
+    const nextLog: MeetingLog = {
+      id: `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+      timestamp: Date.now(),
+      type,
+      title,
+      detail,
+    };
+    setMeetingLogs((prev) => [nextLog, ...prev].slice(0, 500));
+  }, []);
+
+  const clearMeetingLogs = useCallback(() => {
+    setMeetingLogs([]);
+  }, []);
 
   const saveArchive = useCallback(() => {
     const archiveId = currentArchiveId ?? Date.now().toString();
@@ -153,6 +198,7 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
       attendance,
       countryRights,
       agendaItems,
+      meetingLogs,
     };
 
     const existingIndex = archives.findIndex((archive) => archive.id === archiveId);
@@ -164,7 +210,7 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
     setCurrentArchiveId(archiveId);
     setArchives(updatedArchives);
     localStorage.setItem('samun_archives', JSON.stringify(updatedArchives));
-  }, [agendaItems, archives, attendance, countries, countryRights, currentArchiveId, meetingInfo]);
+  }, [agendaItems, archives, attendance, countries, countryRights, currentArchiveId, meetingInfo, meetingLogs]);
 
   const loadArchive = useCallback((id: string) => {
     const archive = archives.find(a => a.id === id);
@@ -174,6 +220,7 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
       setAttendance(archive.attendance);
       setCountryRights(archive.countryRights);
       setAgendaItems(archive.agendaItems);
+      setMeetingLogs(Array.isArray(archive.meetingLogs) ? archive.meetingLogs : []);
       setCurrentArchiveId(archive.id);
       setHasMeetingAccess(true);
       setCurrentPage('meeting-intro');
@@ -188,6 +235,7 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
     setAttendance({});
     setCountryRights({});
     setAgendaItems([]);
+    setMeetingLogs([]);
     setCurrentPage('meeting-create');
   }, []);
 
@@ -207,6 +255,7 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
     setAttendance({});
     setCountryRights({});
     setAgendaItems([]);
+    setMeetingLogs([]);
     setHasMeetingAccess(true);
     setCurrentPage('meeting-intro');
   }, []);
@@ -231,6 +280,9 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
       setCountryRights,
       agendaItems,
       setAgendaItems,
+      meetingLogs,
+      addMeetingLog,
+      clearMeetingLogs,
       archives,
       saveArchive,
       loadArchive,
@@ -247,6 +299,9 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
       attendance,
       countryRights,
       agendaItems,
+      meetingLogs,
+      addMeetingLog,
+      clearMeetingLogs,
       archives,
       saveArchive,
       loadArchive,

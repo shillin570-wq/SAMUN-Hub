@@ -8,7 +8,7 @@ import { CheckCircle2, XCircle, Clock } from 'lucide-react';
 type RollCallStatus = 'pending' | 'present' | 'absent';
 
 export function RollCallPage() {
-  const { meetingInfo, countries, attendance, setAttendance, setCurrentPage } = useMeeting();
+  const { meetingInfo, countries, attendance, setAttendance, setCurrentPage, addMeetingLog } = useMeeting();
   const [status, setStatus] = useState<Record<string, RollCallStatus>>({});
 
   useEffect(() => {
@@ -50,6 +50,13 @@ export function RollCallPage() {
     countries.forEach(c => {
       newAttendance[c] = status[c] === 'present';
     });
+    const presentCountries = countries.filter((c) => newAttendance[c]);
+    const absentCountries = countries.filter((c) => !newAttendance[c]);
+    addMeetingLog(
+      'roll-call',
+      '完成点名',
+      `出席 ${presentCountries.length} 国，缺席 ${absentCountries.length} 国。出席：${presentCountries.join('、') || '无'}；缺席：${absentCountries.join('、') || '无'}`
+    );
     setAttendance(newAttendance);
     setCurrentPage('meeting');
   };

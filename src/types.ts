@@ -16,6 +16,16 @@ export interface AgendaItem {
   status: 'normal' | 'postponed' | 'ended';
 }
 
+export type MeetingLogType = 'roll-call' | 'agenda-change' | 'vote-result' | 'speech';
+
+export interface MeetingLog {
+  id: string;
+  timestamp: number;
+  type: MeetingLogType;
+  title: string;
+  detail: string;
+}
+
 export interface MeetingArchive {
   id: string;
   timestamp: number;
@@ -24,6 +34,15 @@ export interface MeetingArchive {
   attendance: Record<string, boolean>;
   countryRights: Record<string, CountryRight>;
   agendaItems: AgendaItem[];
+  meetingLogs?: MeetingLog[];
 }
 
-export type PageType = 'entry' | 'meeting-create' | 'meeting-intro' | 'meeting' | 'roll-call' | 'agenda-arrangement' | 'voting';
+export type PageType =
+  | 'entry'
+  | 'meeting-create'
+  | 'meeting-intro'
+  | 'meeting'
+  | 'roll-call'
+  | 'agenda-arrangement'
+  | 'voting'
+  | 'meeting-records';
