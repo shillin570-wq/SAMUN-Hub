@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { MeetingInfo, CountryRight, AgendaItem, PageType, MeetingArchive } from '../types';
 
 interface MeetingContextType {
@@ -80,7 +80,7 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, []);
 
-  const saveArchive = () => {
+  const saveArchive = useCallback(() => {
     const archiveId = currentArchiveId ?? Date.now().toString();
     const archiveToSave: MeetingArchive = {
       id: archiveId,
@@ -101,9 +101,9 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
     setCurrentArchiveId(archiveId);
     setArchives(updatedArchives);
     localStorage.setItem('samun_archives', JSON.stringify(updatedArchives));
-  };
+  }, [agendaItems, archives, attendance, countries, countryRights, currentArchiveId, meetingInfo]);
 
-  const loadArchive = (id: string) => {
+  const loadArchive = useCallback((id: string) => {
     const archive = archives.find(a => a.id === id);
     if (archive) {
       setMeetingInfo(archive.meetingInfo);
@@ -115,9 +115,9 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
       setHasMeetingAccess(true);
       setCurrentPage('meeting-intro');
     }
-  };
+  }, [archives]);
 
-  const startMeetingCreation = () => {
+  const startMeetingCreation = useCallback(() => {
     setHasMeetingAccess(false);
     setCurrentArchiveId(null);
     setMeetingInfo({ committee: '', topic: '', recorder: '' });
@@ -126,18 +126,18 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
     setCountryRights({});
     setAgendaItems([]);
     setCurrentPage('meeting-create');
-  };
+  }, []);
 
-  const deleteArchive = (id: string) => {
+  const deleteArchive = useCallback((id: string) => {
     const updatedArchives = archives.filter(a => a.id !== id);
     if (currentArchiveId === id) {
       setCurrentArchiveId(null);
     }
     setArchives(updatedArchives);
     localStorage.setItem('samun_archives', JSON.stringify(updatedArchives));
-  };
+  }, [archives, currentArchiveId]);
 
-  const createNewMeeting = (info: MeetingInfo, createdCountries: string[] = []) => {
+  const createNewMeeting = useCallback((info: MeetingInfo, createdCountries: string[] = []) => {
     setCurrentArchiveId(null);
     setMeetingInfo(info);
     setCountries(createdCountries);
@@ -146,38 +146,56 @@ export const MeetingProvider: React.FC<{ children: ReactNode }> = ({ children })
     setAgendaItems([]);
     setHasMeetingAccess(true);
     setCurrentPage('meeting-intro');
-  };
+  }, []);
 
-  const enterMeeting = () => {
+  const enterMeeting = useCallback(() => {
     if (!hasMeetingAccess) return;
     setCurrentPage('meeting');
-  };
+  }, [hasMeetingAccess]);
+
+  const contextValue = useMemo(
+    () => ({
+      currentPage,
+      setCurrentPage,
+      hasMeetingAccess,
+      meetingInfo,
+      setMeetingInfo,
+      countries,
+      setCountries,
+      attendance,
+      setAttendance,
+      countryRights,
+      setCountryRights,
+      agendaItems,
+      setAgendaItems,
+      archives,
+      saveArchive,
+      loadArchive,
+      deleteArchive,
+      startMeetingCreation,
+      createNewMeeting,
+      enterMeeting,
+    }),
+    [
+      currentPage,
+      hasMeetingAccess,
+      meetingInfo,
+      countries,
+      attendance,
+      countryRights,
+      agendaItems,
+      archives,
+      saveArchive,
+      loadArchive,
+      deleteArchive,
+      startMeetingCreation,
+      createNewMeeting,
+      enterMeeting,
+    ]
+  );
 
   return (
-    <MeetingContext.Provider
-      value={{
-        currentPage,
-        setCurrentPage,
-        hasMeetingAccess,
-        meetingInfo,
-        setMeetingInfo,
-        countries,
-        setCountries,
-        attendance,
-        setAttendance,
-        countryRights,
-        setCountryRights,
-        agendaItems,
-        setAgendaItems,
-        archives,
-        saveArchive,
-        loadArchive,
-        deleteArchive,
-        startMeetingCreation,
-        createNewMeeting,
-        enterMeeting,
-      }}
-    >
+    <MeetingContext.Provider value={contextValue}>
       {children}
     </MeetingContext.Provider>
   );

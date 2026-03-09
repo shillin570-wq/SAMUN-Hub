@@ -1,9 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useMeeting } from '../context/MeetingContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Vote, CheckCircle2, XCircle, MinusCircle, ArrowRightCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -25,6 +24,20 @@ interface CustomRuleConfig {
 }
 
 const RATIO_OPTIONS = ['1/2', '2/3', '3/4', '4/5'] as const;
+const VotingResultCharts = lazy(() =>
+  import('../components/charts/VotingResultCharts').then((m) => ({ default: m.VotingResultCharts }))
+);
+type VoteResults = {
+  approve: number;
+  oppose: number;
+  abstain: number;
+  total: number;
+  valid: number;
+  casted: number;
+  passed: boolean;
+  hasVeto: boolean;
+  finalVotes: Record<string, FinalVoteType | null>;
+};
 
 const parseRatio = (ratio: string) => {
   const [numeratorRaw, denominatorRaw] = ratio.split('/');
@@ -88,10 +101,22 @@ export function VotingPage() {
   const [currentRound, setCurrentRound] = useState<1 | 2>(1);
   const [currentCountryIdx, setCurrentCountryIdx] = useState(0);
 
-  const presentCountries = countries.filter(c => attendance[c]);
-  const votingCountries = countries.filter(c => attendance[c] && !countryRights[c]?.observer);
-  const skippedCountries = votingCountries.filter(c => firstRoundVotes[c] === 'skip');
-  const currentRoundCountries = currentRound === 1 ? votingCountries : skippedCountries;
+  const presentCountries = useMemo(
+    () => countries.filter((country) => attendance[country]),
+    [countries, attendance]
+  );
+  const votingCountries = useMemo(
+    () => countries.filter((country) => attendance[country] && !countryRights[country]?.observer),
+    [countries, attendance, countryRights]
+  );
+  const skippedCountries = useMemo(
+    () => votingCountries.filter((country) => firstRoundVotes[country] === 'skip'),
+    [votingCountries, firstRoundVotes]
+  );
+  const currentRoundCountries = useMemo(
+    () => (currentRound === 1 ? votingCountries : skippedCountries),
+    [currentRound, votingCountries, skippedCountries]
+  );
   const overviewScrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -166,7 +191,7 @@ export function VotingPage() {
     }
   };
 
-  const getResults = () => {
+  const results = useMemo<VoteResults>(() => {
     let approve = 0, oppose = 0, abstain = 0;
     let hasVeto = false;
     const finalVotes: Record<string, FinalVoteType | null> = {};
@@ -240,9 +265,9 @@ export function VotingPage() {
     }
 
     return { approve, oppose, abstain, total, valid, casted, passed, hasVeto, finalVotes };
-  };
+  }, [countryRights, customRule, firstRoundVotes, rule, secondRoundVotes, votingCountries]);
 
-  const getRuleDescription = (res: ReturnType<typeof getResults>) => {
+  const getRuleDescription = (res: VoteResults) => {
     if (rule === 'absolute') {
       return '绝对多数：需达到 2/3 赞成，且弃权不过半，同时不得触发一票否决。';
     }
@@ -636,7 +661,7 @@ export function VotingPage() {
   };
 
   const renderResult = () => {
-    const res = getResults();
+    const res = results;
     const vetoApplied = rule === 'custom' ? customRule.enableVeto && res.hasVeto : res.hasVeto;
     const pieData = [
       { name: '赞成', value: res.approve, color: '#059669' },
@@ -678,42 +703,9 @@ export function VotingPage() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="apple-panel border-0 stage-entrance-delay">
-            <CardHeader>
-              <CardTitle className="text-base">票型占比</CardTitle>
-            </CardHeader>
-            <CardContent className="h-[320px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={95} paddingAngle={4} dataKey="value">
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-          <Card className="apple-panel border-0 stage-entrance-delay">
-            <CardHeader>
-              <CardTitle className="text-base">票数统计</CardTitle>
-            </CardHeader>
-            <CardContent className="h-[320px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.35)" />
-                  <XAxis dataKey="name" stroke="rgba(71, 85, 105, 0.85)" />
-                  <YAxis stroke="rgba(71, 85, 105, 0.85)" />
-                  <Tooltip />
-                  <Bar dataKey="value" fill={res.passed ? '#059669' : '#9f4f59'} radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </div>
+        <Suspense fallback={<div className="h-[320px] rounded-2xl border border-slate-100 bg-white/70" />}>
+          <VotingResultCharts pieData={pieData} barData={barData} passed={res.passed} />
+        </Suspense>
 
         <Card className="apple-panel border-0 stage-entrance-delay">
           <CardHeader>
