@@ -73,6 +73,21 @@
     background-color: #cbd5e1;
     border-radius: 20px;
   }
+
+  .sidebar-scrollbar-transparent {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .sidebar-scrollbar-transparent::-webkit-scrollbar {
+    width: 6px;
+  }
+  .sidebar-scrollbar-transparent::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar-scrollbar-transparent::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 20px;
+  }
 }
 
 @keyframes stage-enter {

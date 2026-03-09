@@ -101,7 +101,7 @@ export function Sidebar({
           </div>
         </div>
         
-        <nav className="flex-1 overflow-y-auto py-4 flex flex-col">
+        <nav className="flex-1 overflow-y-auto py-4 flex flex-col sidebar-scrollbar-transparent">
           <div className="px-6 mb-4">
             <h3 className="text-sm font-semibold text-brand-200/75 uppercase tracking-wider">主界面</h3>
           </div>

@@ -760,7 +760,7 @@ export function MeetingPage() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto pr-2 space-y-2.5 custom-scrollbar">
+            <div className="h-[32rem] overflow-y-auto pr-2 space-y-2.5 custom-scrollbar">
               {!currentSpeaker ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
                   <UserRoundPlus className="w-12 h-12 mb-4 stroke-[1.5]" />
