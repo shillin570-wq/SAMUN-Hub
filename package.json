@@ -38,7 +38,7 @@
   },
   "build": {
     "appId": "com.lin.meeting2",
-    "productName": "SAMUN Hub",
+    "productName": "SAMUN OS",
     "electronVersion": "37.4.0",
     "directories": {
       "output": "release"

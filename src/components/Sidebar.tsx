@@ -57,6 +57,7 @@ export function Sidebar({
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [showSaveToast, setShowSaveToast] = useState(false);
   const [newCountry, setNewCountry] = useState('');
 
@@ -97,7 +98,7 @@ export function Sidebar({
               className="h-9 w-9 rounded-md object-contain bg-white/95 p-0.5 shadow-sm ring-1 ring-white/30"
             />
             <div>
-              <h1 className="text-[1.35rem] font-bold text-white tracking-tight leading-tight">SAMUN Hub</h1>
+              <h1 className="text-[1.35rem] font-bold text-white tracking-tight leading-tight">SAMUN OS</h1>
               <p className="text-sm text-brand-200/70 mt-1">春秋模联会议控制台</p>
             </div>
           </div>
@@ -205,6 +206,15 @@ export function Sidebar({
                 软件说明
               </button>
             </li>
+            <li>
+              <button
+                onClick={() => setIsContactModalOpen(true)}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-[15px] font-medium hover:bg-brand-900/75 hover:text-white transition-colors"
+              >
+                <BookOpen className="w-5 h-5" />
+                联系我们
+              </button>
+            </li>
           </ul>
 
           <div className="mt-8 px-6 mb-4">
@@ -218,7 +228,7 @@ export function Sidebar({
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-[15px] font-medium hover:bg-brand-900/75 hover:text-white transition-colors"
               >
                 <House className="w-5 h-5" />
-                回到封面
+                返回封面
               </button>
             </li>
             <li>
@@ -387,6 +397,24 @@ export function Sidebar({
           ))}
           <div className="flex justify-end">
             <Button onClick={() => setIsGuideModalOpen(false)}>我知道了</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isContactModalOpen}
+        onClose={() => setIsContactModalOpen(false)}
+        title="联系我们"
+        className="max-w-4xl"
+      >
+        <div className="space-y-4">
+          <img
+            src="/contact-us.png"
+            alt="SAMUN 联系我们"
+            className="w-full h-auto rounded-xl border border-slate-200"
+          />
+          <div className="flex justify-end">
+            <Button onClick={() => setIsContactModalOpen(false)}>关闭</Button>
           </div>
         </div>
       </Modal>
