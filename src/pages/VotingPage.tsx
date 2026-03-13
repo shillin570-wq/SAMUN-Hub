@@ -100,6 +100,7 @@ export function VotingPage() {
   const [secondRoundVotes, setSecondRoundVotes] = useState<Record<string, 'approve' | 'oppose' | null>>({});
   const [currentRound, setCurrentRound] = useState<1 | 2>(1);
   const [currentCountryIdx, setCurrentCountryIdx] = useState(0);
+  const [showRollCallChoice, setShowRollCallChoice] = useState(false);
 
   const presentCountries = useMemo(
     () => countries.filter((country) => attendance[country]),
@@ -130,25 +131,29 @@ export function VotingPage() {
     }
   }, [phase, currentRound, currentCountryIdx, firstRoundVotes, secondRoundVotes]);
 
-  const handleStartVoting = () => {
+  const validateVotingSetup = () => {
     if (!topic.trim()) {
       alert('请输入投票主题');
-      return;
+      return false;
     }
     if (rule === 'custom') {
       if (!isValidRatio(customRule.passRatio)) {
         alert('通过比例格式无效，请输入“分子/分母”，且分子不大于分母（例如 2/3）。');
-        return;
+        return false;
       }
       if (customRule.abstainLimitEnabled && !isValidRatio(customRule.abstainLimitRatio)) {
         alert('弃权上限比例格式无效，请输入“分子/分母”（例如 1/2）。');
-        return;
+        return false;
       }
     }
     if (votingCountries.length === 0) {
       alert('当前没有可参与投票的国家，请检查观察员设置。');
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const beginVotingSession = () => {
     const initialFirstRoundVotes: Record<string, VoteType> = {};
     votingCountries.forEach(c => { initialFirstRoundVotes[c] = null; });
     setFirstRoundVotes(initialFirstRoundVotes);
@@ -157,6 +162,21 @@ export function VotingPage() {
     setCurrentCountryIdx(0);
     setPhase('voting');
     hasLoggedResultRef.current = false;
+  };
+
+  const handleStartVoting = () => {
+    if (!validateVotingSetup()) return;
+    setShowRollCallChoice(true);
+  };
+
+  const handleStartVotingWithoutRollCall = () => {
+    setShowRollCallChoice(false);
+    beginVotingSession();
+  };
+
+  const handleStartVotingWithRollCall = () => {
+    setShowRollCallChoice(false);
+    setCurrentPage('roll-call');
   };
 
   const castVote = (type: VoteType) => {
@@ -557,6 +577,19 @@ export function VotingPage() {
           <Button className="w-full" size="lg" onClick={handleStartVoting}>
             开始投票
           </Button>
+          {showRollCallChoice && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <p className="text-sm font-medium text-slate-700">发起投票前，是否重新点名？</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={handleStartVotingWithRollCall}>
+                  先重新点名
+                </Button>
+                <Button type="button" className="flex-1" onClick={handleStartVotingWithoutRollCall}>
+                  直接开始投票
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

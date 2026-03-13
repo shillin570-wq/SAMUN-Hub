@@ -194,7 +194,7 @@ export function Sidebar({
                 )}
               >
                 <NotebookText className="w-5 h-5" />
-                会议记录
+                会议日志
               </button>
             </li>
             <li>

@@ -8,7 +8,7 @@ const LOG_TYPE_LABEL: Record<MeetingLogType, string> = {
   'roll-call': '点名',
   'agenda-change': '议程变更',
   'vote-result': '投票结果',
-  speech: '发言记录',
+  speech: '发言日志',
 };
 
 type FilterType = MeetingLogType | 'all';
@@ -25,8 +25,8 @@ export function MeetingRecordsPage() {
 
   const getSpeechSpeakerText = (title: string, detail: string) => {
     if (detail.endsWith('发言')) return detail;
-    if (title.startsWith('发言记录：')) {
-      const speaker = title.replace('发言记录：', '').trim();
+    if (title.startsWith('发言记录：') || title.startsWith('发言日志：')) {
+      const speaker = title.replace(/^发言(?:记录|日志)：/, '').trim();
       return speaker ? `${speaker} 发言` : detail;
     }
     return detail;
@@ -55,7 +55,7 @@ export function MeetingRecordsPage() {
     `[${new Date(log.timestamp).toLocaleString()}] [${LOG_TYPE_LABEL[log.type]}] ${log.title} - ${log.detail}`;
 
   const getExportBaseName = () =>
-    `会议记录_${filterType === 'all' ? '全部' : LOG_TYPE_LABEL[filterType]}_${new Date()
+    `会议日志_${filterType === 'all' ? '全部' : LOG_TYPE_LABEL[filterType]}_${new Date()
       .toLocaleString()
       .replace(/[/: ]/g, '-')}`;
 
@@ -74,7 +74,7 @@ export function MeetingRecordsPage() {
     const content = lines.join('\n');
     try {
       await navigator.clipboard.writeText(content);
-      alert('会议记录已复制到剪贴板。');
+      alert('会议日志已复制到剪贴板。');
     } catch (error) {
       console.error('Failed to copy meeting logs', error);
       alert('复制失败，请稍后重试。');
@@ -116,7 +116,7 @@ export function MeetingRecordsPage() {
           </style>
         </head>
         <body>
-          <h1>会议记录导出</h1>
+          <h1>会议日志导出</h1>
           <p>导出时间：${escapeHtml(new Date().toLocaleString())}</p>
           <p>导出范围：${escapeHtml(filterType === 'all' ? '全部类型' : LOG_TYPE_LABEL[filterType])}</p>
           <p>委员会：${escapeHtml(meetingInfo.committee || '未填写')}</p>
@@ -149,7 +149,7 @@ export function MeetingRecordsPage() {
         <CardContent className="p-6 md:p-7">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-slate-900">会议记录</h1>
+              <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-slate-900">会议日志</h1>
               <p className="text-slate-500 mt-1">自动记录点名、议程变更、投票结果与发言情况</p>
             </div>
             <div className="flex items-center gap-2">
@@ -162,16 +162,16 @@ export function MeetingRecordsPage() {
                 <option value="roll-call">点名</option>
                 <option value="agenda-change">议程变更</option>
                 <option value="vote-result">投票结果</option>
-                <option value="speech">发言记录</option>
+                <option value="speech">发言日志</option>
               </select>
               <Button variant="secondary" onClick={handleCopyText} disabled={filteredLogs.length === 0}>
-                复制当前记录
+                复制当前日志
               </Button>
               <Button variant="secondary" onClick={handleExportWord} disabled={filteredLogs.length === 0}>
                 导出Word
               </Button>
               <Button variant="outline" onClick={clearMeetingLogs} disabled={meetingLogs.length === 0}>
-                清空记录
+                清空日志
               </Button>
             </div>
           </div>
@@ -180,12 +180,12 @@ export function MeetingRecordsPage() {
 
       <Card className="apple-panel border-0">
         <CardHeader>
-          <CardTitle>记录列表（{filteredLogs.length}）</CardTitle>
+          <CardTitle>日志列表（{filteredLogs.length}）</CardTitle>
         </CardHeader>
         <CardContent>
           {filteredLogs.length === 0 ? (
             <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-              暂无记录
+              暂无日志
             </div>
           ) : filterType === 'speech' ? (
             <div className="max-h-[70vh] overflow-y-auto pr-2 space-y-3 custom-scrollbar">

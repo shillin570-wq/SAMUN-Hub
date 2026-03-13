@@ -28,16 +28,29 @@ interface PersistedMeetingPageState {
   meetingSignature: string;
   speakerListsBySection: Record<string, string[]>;
   speakers?: string[];
+  timerStatesBySection?: Record<string, TimerSectionState>;
+  timeLeft?: number;
+  totalElapsed?: number;
+  totalDurationInput?: string;
+  totalCountdownSeconds?: number | null;
+  showTotalTimer?: boolean;
+  customTime?: string;
+  discussionMode: 'agenda' | 'consultation' | 'debate' | 'file' | 'moderated-caucus' | 'main-speaker-list';
+  selectedAgendaId: string;
+  discussionFileName: string;
+  moderatedCaucusTopic: string;
+}
+
+type DiscussionMode = 'agenda' | 'consultation' | 'debate' | 'file' | 'moderated-caucus' | 'main-speaker-list';
+
+interface TimerSectionState {
   timeLeft: number;
   totalElapsed: number;
   totalDurationInput: string;
   totalCountdownSeconds: number | null;
   showTotalTimer: boolean;
   customTime: string;
-  discussionMode: 'agenda' | 'consultation' | 'debate' | 'file' | 'moderated-caucus' | 'main-speaker-list';
-  selectedAgendaId: string;
-  discussionFileName: string;
-  moderatedCaucusTopic: string;
+  isRunning: boolean;
 }
 
 const normalizeKeyword = (value: string) =>
@@ -69,20 +82,57 @@ const getCountrySearchTokens = (country: string) => {
   );
 };
 
+const getSectionKey = (mode: DiscussionMode, agendaId: string) => {
+  if (mode === 'agenda') return `agenda:${agendaId || 'none'}`;
+  return mode;
+};
+
+const getDefaultShowTotalTimer = (mode: DiscussionMode) => mode === 'moderated-caucus';
+
+const createDefaultTimerSectionState = (showTotalTimer: boolean): TimerSectionState => ({
+  timeLeft: 120,
+  totalElapsed: 0,
+  totalDurationInput: '',
+  totalCountdownSeconds: null,
+  showTotalTimer,
+  customTime: '120',
+  isRunning: false,
+});
+
+const sanitizeTimerSectionState = (
+  source: Partial<TimerSectionState> | undefined,
+  fallbackShowTotalTimer: boolean
+): TimerSectionState => {
+  const timeLeft = typeof source?.timeLeft === 'number' && source.timeLeft >= 0 ? source.timeLeft : 120;
+  const totalElapsed = typeof source?.totalElapsed === 'number' && source.totalElapsed >= 0 ? source.totalElapsed : 0;
+  const totalDurationInput = typeof source?.totalDurationInput === 'string' ? source.totalDurationInput : '';
+  const totalCountdownSeconds =
+    typeof source?.totalCountdownSeconds === 'number' && source.totalCountdownSeconds >= 0
+      ? source.totalCountdownSeconds
+      : null;
+  const showTotalTimer = typeof source?.showTotalTimer === 'boolean' ? source.showTotalTimer : fallbackShowTotalTimer;
+  const customTime = typeof source?.customTime === 'string' ? source.customTime : '120';
+  return {
+    timeLeft,
+    totalElapsed,
+    totalDurationInput,
+    totalCountdownSeconds,
+    showTotalTimer,
+    customTime,
+    isRunning: false,
+  };
+};
+
 export function MeetingPage() {
   const { meetingInfo, countries, attendance, agendaItems, addMeetingLog } = useMeeting();
   const [speakerListsBySection, setSpeakerListsBySection] = useState<Record<string, string[]>>({});
+  const [timerStatesBySection, setTimerStatesBySection] = useState<Record<string, TimerSectionState>>({});
+  const [loggedSpeakerBySection, setLoggedSpeakerBySection] = useState<Record<string, string>>({});
+  const [runStartTimeLeftBySection, setRunStartTimeLeftBySection] = useState<Record<string, number>>({});
   const [newSpeaker, setNewSpeaker] = useState('');
   const [isSpeakerSearchOpen, setIsSpeakerSearchOpen] = useState(false);
   const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] = useState(-1);
-  const [timeLeft, setTimeLeft] = useState(120);
-  const [totalElapsed, setTotalElapsed] = useState(0);
-  const [totalDurationInput, setTotalDurationInput] = useState('');
-  const [totalCountdownSeconds, setTotalCountdownSeconds] = useState<number | null>(null);
-  const [showTotalTimer, setShowTotalTimer] = useState(true);
-  const [isRunning, setIsRunning] = useState(false);
-  const [customTime, setCustomTime] = useState('120');
-  const [discussionMode, setDiscussionMode] = useState<'agenda' | 'consultation' | 'debate' | 'file' | 'moderated-caucus' | 'main-speaker-list'>('agenda');
+  const [discussionMode, setDiscussionMode] = useState<DiscussionMode>('agenda');
   const [selectedAgendaId, setSelectedAgendaId] = useState<string>('');
   const [discussionFileName, setDiscussionFileName] = useState('');
   const [moderatedCaucusTopic, setModeratedCaucusTopic] = useState('');
@@ -90,13 +140,6 @@ export function MeetingPage() {
   const [collapsedAgendaGroupIds, setCollapsedAgendaGroupIds] = useState<string[]>([]);
   const [isStateHydrated, setIsStateHydrated] = useState(false);
   const lastPersistAtRef = useRef(0);
-  const getSpeakerSectionKey = (
-    mode: 'agenda' | 'consultation' | 'debate' | 'file' | 'moderated-caucus' | 'main-speaker-list',
-    agendaId: string
-  ) => {
-    if (mode === 'agenda') return `agenda:${agendaId || 'none'}`;
-    return mode;
-  };
   const meetingSignature = useMemo(
     () => [meetingInfo.committee, meetingInfo.topic, meetingInfo.recorder].join('||'),
     [meetingInfo.committee, meetingInfo.topic, meetingInfo.recorder]
@@ -105,14 +148,22 @@ export function MeetingPage() {
   const presentCount = countries.filter((country) => attendance[country]).length;
   const absoluteMajority = Math.ceil(presentCount * 2 / 3);
   const simpleMajority = Math.floor(presentCount / 2) + 1;
-  const currentSpeakerSectionKey = useMemo(
-    () => getSpeakerSectionKey(discussionMode, selectedAgendaId),
+  const currentSectionKey = useMemo(
+    () => getSectionKey(discussionMode, selectedAgendaId),
     [discussionMode, selectedAgendaId]
   );
   const speakers = useMemo(
-    () => speakerListsBySection[currentSpeakerSectionKey] ?? [],
-    [speakerListsBySection, currentSpeakerSectionKey]
+    () => speakerListsBySection[currentSectionKey] ?? [],
+    [speakerListsBySection, currentSectionKey]
   );
+  const currentTimerState = useMemo(
+    () =>
+      timerStatesBySection[currentSectionKey] ??
+      createDefaultTimerSectionState(getDefaultShowTotalTimer(discussionMode)),
+    [timerStatesBySection, currentSectionKey, discussionMode]
+  );
+  const { timeLeft, totalElapsed, totalDurationInput, totalCountdownSeconds, showTotalTimer, customTime, isRunning } =
+    currentTimerState;
   const currentSpeaker = useMemo(() => speakers[0], [speakers]);
   const speakerSet = useMemo(() => new Set(speakers), [speakers]);
   const collapsedAgendaGroupIdSet = useMemo(() => new Set(collapsedAgendaGroupIds), [collapsedAgendaGroupIds]);
@@ -208,6 +259,17 @@ export function MeetingPage() {
       .slice(0, 8);
   }, [countries, newSpeaker, speakerSet, countrySearchIndex]);
 
+  const updateCurrentTimerState = (updater: (prev: TimerSectionState) => TimerSectionState) => {
+    setTimerStatesBySection((prev) => {
+      const base =
+        prev[currentSectionKey] ?? createDefaultTimerSectionState(getDefaultShowTotalTimer(discussionMode));
+      return {
+        ...prev,
+        [currentSectionKey]: updater(base),
+      };
+    });
+  };
+
   useEffect(() => {
     if (!isSpeakerSearchOpen || speakerSuggestions.length === 0) {
       setHighlightedSuggestionIndex(-1);
@@ -222,29 +284,31 @@ export function MeetingPage() {
   useEffect(() => {
     if (!isRunning || timeLeft <= 0) return;
     const timer = window.setInterval(() => {
-      setTimeLeft((prev) => prev - 1);
-      if (showTotalTimer) {
-        setTotalElapsed((prev) => prev + 1);
-        setTotalCountdownSeconds((prev) => {
-          if (prev === null) return null;
-          return Math.max(prev - 1, 0);
-        });
-      }
+      setTimerStatesBySection((prev) => {
+        const base =
+          prev[currentSectionKey] ?? createDefaultTimerSectionState(getDefaultShowTotalTimer(discussionMode));
+        if (!base.isRunning || base.timeLeft <= 0) return prev;
+        const nextTimeLeft = Math.max(base.timeLeft - 1, 0);
+        const nextState: TimerSectionState = {
+          ...base,
+          timeLeft: nextTimeLeft,
+        };
+        if (base.showTotalTimer) {
+          nextState.totalElapsed = base.totalElapsed + 1;
+          nextState.totalCountdownSeconds =
+            base.totalCountdownSeconds === null ? null : Math.max(base.totalCountdownSeconds - 1, 0);
+        }
+        if (nextState.timeLeft === 0 || (nextState.showTotalTimer && nextState.totalCountdownSeconds === 0)) {
+          nextState.isRunning = false;
+        }
+        return {
+          ...prev,
+          [currentSectionKey]: nextState,
+        };
+      });
     }, 1000);
     return () => clearInterval(timer);
-  }, [isRunning, timeLeft, showTotalTimer]);
-
-  useEffect(() => {
-    if (timeLeft === 0) setIsRunning(false);
-  }, [timeLeft]);
-
-  useEffect(() => {
-    if (totalCountdownSeconds === 0) setIsRunning(false);
-  }, [totalCountdownSeconds]);
-
-  useEffect(() => {
-    setShowTotalTimer(discussionMode === 'moderated-caucus');
-  }, [discussionMode]);
+  }, [isRunning, timeLeft, currentSectionKey, discussionMode]);
 
   useEffect(() => {
     const rawState = localStorage.getItem(MEETING_PAGE_STATE_KEY);
@@ -256,6 +320,9 @@ export function MeetingPage() {
     try {
       const parsed = JSON.parse(rawState) as PersistedMeetingPageState;
       if (parsed.meetingSignature !== meetingSignature) return;
+      const restoredDiscussionMode = parsed.discussionMode ?? 'agenda';
+      const restoredSelectedAgendaId = typeof parsed.selectedAgendaId === 'string' ? parsed.selectedAgendaId : '';
+      const legacySectionKey = getSectionKey(restoredDiscussionMode, restoredSelectedAgendaId);
 
       if (parsed.speakerListsBySection && typeof parsed.speakerListsBySection === 'object') {
         setSpeakerListsBySection(parsed.speakerListsBySection);
@@ -269,23 +336,36 @@ export function MeetingPage() {
             : {}
         );
       }
-      setTimeLeft(typeof parsed.timeLeft === 'number' && parsed.timeLeft >= 0 ? parsed.timeLeft : 120);
-      setTotalElapsed(typeof parsed.totalElapsed === 'number' && parsed.totalElapsed >= 0 ? parsed.totalElapsed : 0);
-      setTotalDurationInput(typeof parsed.totalDurationInput === 'string' ? parsed.totalDurationInput : '');
-      setTotalCountdownSeconds(
-        typeof parsed.totalCountdownSeconds === 'number' && parsed.totalCountdownSeconds >= 0
-          ? parsed.totalCountdownSeconds
-          : null
-      );
-      setCustomTime(typeof parsed.customTime === 'string' ? parsed.customTime : '120');
-      const restoredDiscussionMode = parsed.discussionMode ?? 'agenda';
+      if (parsed.timerStatesBySection && typeof parsed.timerStatesBySection === 'object') {
+        const nextTimerStates = Object.entries(parsed.timerStatesBySection).reduce<Record<string, TimerSectionState>>(
+          (acc, [key, value]) => {
+            const fallbackShowTotalTimer = key === 'moderated-caucus';
+            acc[key] = sanitizeTimerSectionState(value, fallbackShowTotalTimer);
+            return acc;
+          },
+          {}
+        );
+        setTimerStatesBySection(nextTimerStates);
+      } else {
+        const legacyTimerState = sanitizeTimerSectionState(
+          {
+            timeLeft: parsed.timeLeft,
+            totalElapsed: parsed.totalElapsed,
+            totalDurationInput: parsed.totalDurationInput,
+            totalCountdownSeconds: parsed.totalCountdownSeconds,
+            showTotalTimer: parsed.showTotalTimer,
+            customTime: parsed.customTime,
+          },
+          getDefaultShowTotalTimer(restoredDiscussionMode)
+        );
+        setTimerStatesBySection({
+          [legacySectionKey]: legacyTimerState,
+        });
+      }
       setDiscussionMode(restoredDiscussionMode);
-      setShowTotalTimer(restoredDiscussionMode === 'moderated-caucus');
-      setSelectedAgendaId(typeof parsed.selectedAgendaId === 'string' ? parsed.selectedAgendaId : '');
+      setSelectedAgendaId(restoredSelectedAgendaId);
       setDiscussionFileName(typeof parsed.discussionFileName === 'string' ? parsed.discussionFileName : '');
       setModeratedCaucusTopic(typeof parsed.moderatedCaucusTopic === 'string' ? parsed.moderatedCaucusTopic : '');
-      // 页面重新进入后默认暂停，避免后台计时导致状态跳变
-      setIsRunning(false);
     } catch (error) {
       console.error('Failed to parse meeting page state', error);
     } finally {
@@ -303,12 +383,7 @@ export function MeetingPage() {
     const stateToPersist: PersistedMeetingPageState = {
       meetingSignature,
       speakerListsBySection,
-      timeLeft,
-      totalElapsed,
-      totalDurationInput,
-      totalCountdownSeconds,
-      showTotalTimer,
-      customTime,
+      timerStatesBySection,
       discussionMode,
       selectedAgendaId,
       discussionFileName,
@@ -320,12 +395,7 @@ export function MeetingPage() {
   }, [
     meetingSignature,
     speakerListsBySection,
-    timeLeft,
-    totalElapsed,
-    totalDurationInput,
-    totalCountdownSeconds,
-    showTotalTimer,
-    customTime,
+    timerStatesBySection,
     discussionMode,
     selectedAgendaId,
     discussionFileName,
@@ -340,12 +410,7 @@ export function MeetingPage() {
       const stateToPersist: PersistedMeetingPageState = {
         meetingSignature,
         speakerListsBySection,
-        timeLeft,
-        totalElapsed,
-        totalDurationInput,
-        totalCountdownSeconds,
-        showTotalTimer,
-        customTime,
+        timerStatesBySection,
         discussionMode,
         selectedAgendaId,
         discussionFileName,
@@ -357,12 +422,7 @@ export function MeetingPage() {
     isStateHydrated,
     meetingSignature,
     speakerListsBySection,
-    timeLeft,
-    totalElapsed,
-    totalDurationInput,
-    totalCountdownSeconds,
-    showTotalTimer,
-    customTime,
+    timerStatesBySection,
     discussionMode,
     selectedAgendaId,
     discussionFileName,
@@ -401,7 +461,7 @@ export function MeetingPage() {
     }
     setSpeakerListsBySection((prev) => ({
       ...prev,
-      [currentSpeakerSectionKey]: [...(prev[currentSpeakerSectionKey] ?? []), value],
+      [currentSectionKey]: [...(prev[currentSectionKey] ?? []), value],
     }));
     setNewSpeaker('');
     setIsSpeakerSearchOpen(false);
@@ -450,36 +510,93 @@ export function MeetingPage() {
 
   const handleNextSpeaker = () => {
     if (speakers.length === 0) return;
-    const speaker = speakers[0];
-    addMeetingLog(
-      'speech',
-      `发言议题：${currentDiscussion}`,
-      `${speaker} 发言`
-    );
     setSpeakerListsBySection((prev) => {
-      const currentList = prev[currentSpeakerSectionKey] ?? [];
+      const currentList = prev[currentSectionKey] ?? [];
       return {
         ...prev,
-        [currentSpeakerSectionKey]: currentList.slice(1),
+        [currentSectionKey]: currentList.slice(1),
       };
     });
-    setIsRunning(false);
-    setTimeLeft(parseInt(customTime, 10) || 120);
+    setLoggedSpeakerBySection((prev) => {
+      const next = { ...prev };
+      delete next[currentSectionKey];
+      return next;
+    });
+    updateCurrentTimerState((prev) => ({
+      ...prev,
+      isRunning: false,
+      timeLeft: parseInt(prev.customTime, 10) || 120,
+    }));
   };
 
   const handleSetTime = () => {
     const value = parseInt(customTime, 10);
     if (Number.isNaN(value) || value <= 0) return;
-    setIsRunning(false);
-    setTimeLeft(value);
+    updateCurrentTimerState((prev) => ({
+      ...prev,
+      isRunning: false,
+      timeLeft: value,
+      customTime: String(value),
+    }));
   };
 
   const handleSetTotalDuration = () => {
     const value = parseInt(totalDurationInput, 10);
     if (Number.isNaN(value) || value <= 0) return;
-    setIsRunning(false);
-    setTotalCountdownSeconds(value);
+    updateCurrentTimerState((prev) => ({
+      ...prev,
+      isRunning: false,
+      totalCountdownSeconds: value,
+      totalDurationInput: String(value),
+    }));
   };
+
+  const handleToggleTimer = () => {
+    if (showTotalTimer && totalCountdownSeconds === 0) return;
+    if (isRunning) {
+      if (discussionMode === 'consultation' || discussionMode === 'debate') {
+        const startedAt = runStartTimeLeftBySection[currentSectionKey];
+        const elapsedSeconds = Math.max((typeof startedAt === 'number' ? startedAt : timeLeft) - timeLeft, 0);
+        const modeLabel = discussionMode === 'consultation' ? '自由磋商' : '自由辩论';
+        addMeetingLog('speech', `发言议题：${currentDiscussion}`, `${modeLabel} 总时长 ${formatTime(elapsedSeconds)}`);
+      }
+      updateCurrentTimerState((prev) => ({
+        ...prev,
+        isRunning: false,
+      }));
+      if (discussionMode === 'consultation' || discussionMode === 'debate') {
+        setLoggedSpeakerBySection((prev) => {
+          const next = { ...prev };
+          delete next[currentSectionKey];
+          return next;
+        });
+        setRunStartTimeLeftBySection((prev) => {
+          const next = { ...prev };
+          delete next[currentSectionKey];
+          return next;
+        });
+      }
+      return;
+    }
+    if (discussionMode === 'consultation' || discussionMode === 'debate') {
+      setRunStartTimeLeftBySection((prev) => ({
+        ...prev,
+        [currentSectionKey]: timeLeft,
+      }));
+    }
+    if (currentSpeaker && loggedSpeakerBySection[currentSectionKey] !== currentSpeaker) {
+      addMeetingLog('speech', `发言议题：${currentDiscussion}`, `${currentSpeaker} 发言`);
+      setLoggedSpeakerBySection((prev) => ({
+        ...prev,
+        [currentSectionKey]: currentSpeaker,
+      }));
+    }
+    updateCurrentTimerState((prev) => ({
+      ...prev,
+      isRunning: true,
+    }));
+  };
+
   const toggleAgendaGroup = (levelOneId: string) => {
     setCollapsedAgendaGroupIds((prev) =>
       prev.includes(levelOneId) ? prev.filter((id) => id !== levelOneId) : [...prev, levelOneId]
@@ -748,7 +865,13 @@ export function MeetingPage() {
 
               <div className="mt-5 flex items-center justify-center gap-5">
                 <button
-                  onClick={() => { setIsRunning(false); setTimeLeft(parseInt(customTime, 10) || 120); }}
+                  onClick={() =>
+                    updateCurrentTimerState((prev) => ({
+                      ...prev,
+                      isRunning: false,
+                      timeLeft: parseInt(prev.customTime, 10) || 120,
+                    }))
+                  }
                   className="w-14 h-14 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center transition-all hover:bg-slate-200 active:scale-95 outline-none"
                   title="重置时间"
                 >
@@ -756,10 +879,7 @@ export function MeetingPage() {
                 </button>
 
                 <button
-                  onClick={() => {
-                    if (totalCountdownSeconds === 0) return;
-                    setIsRunning(!isRunning);
-                  }}
+                  onClick={handleToggleTimer}
                   className={cn(
                     "w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 shadow-md active:scale-95 outline-none border-[5px] border-white ring-1",
                     isRunning
@@ -788,7 +908,12 @@ export function MeetingPage() {
                   <input
                     type="number"
                     value={customTime}
-                    onChange={(e) => setCustomTime(e.target.value)}
+                    onChange={(e) =>
+                      updateCurrentTimerState((prev) => ({
+                        ...prev,
+                        customTime: e.target.value,
+                      }))
+                    }
                     className="w-24 bg-slate-50 border border-slate-200/70 rounded-xl px-3 py-2 text-center text-sm focus:ring-2 focus:ring-slate-300 outline-none font-medium text-slate-700 transition-all"
                     placeholder="单位秒数"
                   />
@@ -806,7 +931,12 @@ export function MeetingPage() {
                   <input
                     type="number"
                     value={totalDurationInput}
-                    onChange={(e) => setTotalDurationInput(e.target.value)}
+                    onChange={(e) =>
+                      updateCurrentTimerState((prev) => ({
+                        ...prev,
+                        totalDurationInput: e.target.value,
+                      }))
+                    }
                     className="w-24 bg-slate-50 border border-slate-200/70 rounded-xl px-3 py-2 text-center text-sm focus:ring-2 focus:ring-slate-300 outline-none font-medium text-slate-700 transition-all disabled:bg-slate-100"
                     placeholder="总秒数"
                     disabled={!showTotalTimer}
@@ -819,7 +949,12 @@ export function MeetingPage() {
                     应用
                   </button>
                   <button
-                    onClick={() => setShowTotalTimer((prev) => !prev)}
+                    onClick={() =>
+                      updateCurrentTimerState((prev) => ({
+                        ...prev,
+                        showTotalTimer: !prev.showTotalTimer,
+                      }))
+                    }
                     className="text-sm font-semibold text-slate-400 hover:text-slate-700 transition-colors px-2 py-1"
                   >
                     {showTotalTimer ? '隐藏' : '显示'}
@@ -916,7 +1051,7 @@ export function MeetingPage() {
                           newArr.splice(idx, 1);
                           setSpeakerListsBySection((prev) => ({
                             ...prev,
-                            [currentSpeakerSectionKey]: newArr,
+                            [currentSectionKey]: newArr,
                           }));
                         }}
                         title="移出名单"
