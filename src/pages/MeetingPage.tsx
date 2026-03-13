@@ -26,7 +26,8 @@ const COUNTRY_SEARCH_ALIASES: Record<string, string[]> = {
 
 interface PersistedMeetingPageState {
   meetingSignature: string;
-  speakers: string[];
+  speakerListsBySection: Record<string, string[]>;
+  speakers?: string[];
   timeLeft: number;
   totalElapsed: number;
   totalDurationInput: string;
@@ -70,7 +71,7 @@ const getCountrySearchTokens = (country: string) => {
 
 export function MeetingPage() {
   const { meetingInfo, countries, attendance, agendaItems, addMeetingLog } = useMeeting();
-  const [speakers, setSpeakers] = useState<string[]>([]);
+  const [speakerListsBySection, setSpeakerListsBySection] = useState<Record<string, string[]>>({});
   const [newSpeaker, setNewSpeaker] = useState('');
   const [isSpeakerSearchOpen, setIsSpeakerSearchOpen] = useState(false);
   const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] = useState(-1);
@@ -89,6 +90,13 @@ export function MeetingPage() {
   const [collapsedAgendaGroupIds, setCollapsedAgendaGroupIds] = useState<string[]>([]);
   const [isStateHydrated, setIsStateHydrated] = useState(false);
   const lastPersistAtRef = useRef(0);
+  const getSpeakerSectionKey = (
+    mode: 'agenda' | 'consultation' | 'debate' | 'file' | 'moderated-caucus' | 'main-speaker-list',
+    agendaId: string
+  ) => {
+    if (mode === 'agenda') return `agenda:${agendaId || 'none'}`;
+    return mode;
+  };
   const meetingSignature = useMemo(
     () => [meetingInfo.committee, meetingInfo.topic, meetingInfo.recorder].join('||'),
     [meetingInfo.committee, meetingInfo.topic, meetingInfo.recorder]
@@ -97,6 +105,14 @@ export function MeetingPage() {
   const presentCount = countries.filter((country) => attendance[country]).length;
   const absoluteMajority = Math.ceil(presentCount * 2 / 3);
   const simpleMajority = Math.floor(presentCount / 2) + 1;
+  const currentSpeakerSectionKey = useMemo(
+    () => getSpeakerSectionKey(discussionMode, selectedAgendaId),
+    [discussionMode, selectedAgendaId]
+  );
+  const speakers = useMemo(
+    () => speakerListsBySection[currentSpeakerSectionKey] ?? [],
+    [speakerListsBySection, currentSpeakerSectionKey]
+  );
   const currentSpeaker = useMemo(() => speakers[0], [speakers]);
   const speakerSet = useMemo(() => new Set(speakers), [speakers]);
   const collapsedAgendaGroupIdSet = useMemo(() => new Set(collapsedAgendaGroupIds), [collapsedAgendaGroupIds]);
@@ -241,7 +257,18 @@ export function MeetingPage() {
       const parsed = JSON.parse(rawState) as PersistedMeetingPageState;
       if (parsed.meetingSignature !== meetingSignature) return;
 
-      setSpeakers(Array.isArray(parsed.speakers) ? parsed.speakers : []);
+      if (parsed.speakerListsBySection && typeof parsed.speakerListsBySection === 'object') {
+        setSpeakerListsBySection(parsed.speakerListsBySection);
+      } else {
+        const legacySpeakers = Array.isArray(parsed.speakers) ? parsed.speakers : [];
+        setSpeakerListsBySection(
+          legacySpeakers.length > 0
+            ? {
+                'agenda:none': legacySpeakers,
+              }
+            : {}
+        );
+      }
       setTimeLeft(typeof parsed.timeLeft === 'number' && parsed.timeLeft >= 0 ? parsed.timeLeft : 120);
       setTotalElapsed(typeof parsed.totalElapsed === 'number' && parsed.totalElapsed >= 0 ? parsed.totalElapsed : 0);
       setTotalDurationInput(typeof parsed.totalDurationInput === 'string' ? parsed.totalDurationInput : '');
@@ -275,7 +302,7 @@ export function MeetingPage() {
 
     const stateToPersist: PersistedMeetingPageState = {
       meetingSignature,
-      speakers,
+      speakerListsBySection,
       timeLeft,
       totalElapsed,
       totalDurationInput,
@@ -292,7 +319,7 @@ export function MeetingPage() {
     localStorage.setItem(MEETING_PAGE_STATE_KEY, JSON.stringify(stateToPersist));
   }, [
     meetingSignature,
-    speakers,
+    speakerListsBySection,
     timeLeft,
     totalElapsed,
     totalDurationInput,
@@ -312,7 +339,7 @@ export function MeetingPage() {
       if (!isStateHydrated) return;
       const stateToPersist: PersistedMeetingPageState = {
         meetingSignature,
-        speakers,
+        speakerListsBySection,
         timeLeft,
         totalElapsed,
         totalDurationInput,
@@ -329,7 +356,7 @@ export function MeetingPage() {
   }, [
     isStateHydrated,
     meetingSignature,
-    speakers,
+    speakerListsBySection,
     timeLeft,
     totalElapsed,
     totalDurationInput,
@@ -372,7 +399,10 @@ export function MeetingPage() {
         return;
       }
     }
-    setSpeakers((prev) => [...prev, value]);
+    setSpeakerListsBySection((prev) => ({
+      ...prev,
+      [currentSpeakerSectionKey]: [...(prev[currentSpeakerSectionKey] ?? []), value],
+    }));
     setNewSpeaker('');
     setIsSpeakerSearchOpen(false);
     setHighlightedSuggestionIndex(-1);
@@ -426,7 +456,13 @@ export function MeetingPage() {
       `发言议题：${currentDiscussion}`,
       `${speaker} 发言`
     );
-    setSpeakers((prev) => prev.slice(1));
+    setSpeakerListsBySection((prev) => {
+      const currentList = prev[currentSpeakerSectionKey] ?? [];
+      return {
+        ...prev,
+        [currentSpeakerSectionKey]: currentList.slice(1),
+      };
+    });
     setIsRunning(false);
     setTimeLeft(parseInt(customTime, 10) || 120);
   };
@@ -878,7 +914,10 @@ export function MeetingPage() {
                         onClick={() => {
                           const newArr = [...speakers];
                           newArr.splice(idx, 1);
-                          setSpeakers(newArr);
+                          setSpeakerListsBySection((prev) => ({
+                            ...prev,
+                            [currentSpeakerSectionKey]: newArr,
+                          }));
                         }}
                         title="移出名单"
                       >
