@@ -33,7 +33,7 @@ interface PersistedMeetingPageState {
   totalCountdownSeconds: number | null;
   showTotalTimer: boolean;
   customTime: string;
-  discussionMode: 'agenda' | 'consultation' | 'debate' | 'file';
+  discussionMode: 'agenda' | 'consultation' | 'debate' | 'file' | 'moderated-caucus' | 'main-speaker-list';
   selectedAgendaId: string;
   discussionFileName: string;
 }
@@ -80,7 +80,7 @@ export function MeetingPage() {
   const [showTotalTimer, setShowTotalTimer] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [customTime, setCustomTime] = useState('120');
-  const [discussionMode, setDiscussionMode] = useState<'agenda' | 'consultation' | 'debate' | 'file'>('agenda');
+  const [discussionMode, setDiscussionMode] = useState<'agenda' | 'consultation' | 'debate' | 'file' | 'moderated-caucus' | 'main-speaker-list'>('agenda');
   const [selectedAgendaId, setSelectedAgendaId] = useState<string>('');
   const [discussionFileName, setDiscussionFileName] = useState('');
   const [isAgendaSelectorCollapsed, setIsAgendaSelectorCollapsed] = useState(true);
@@ -152,10 +152,25 @@ export function MeetingPage() {
   const currentDiscussion = useMemo(() => {
     if (discussionMode === 'consultation') return '自由磋商';
     if (discussionMode === 'debate') return '自由辩论';
-    if (discussionMode === 'file') return discussionFileName.trim() ? `文件 - ${discussionFileName.trim()}` : '文件 - 未填写文件名';
+    if (discussionMode === 'file') return discussionFileName.trim() ? `主题 - ${discussionFileName.trim()}` : '主题 - 未填写主题名';
+    if (discussionMode === 'moderated-caucus') return '有主持核心磋商';
+    if (discussionMode === 'main-speaker-list') {
+      if (!selectedAgenda) return '主发言名单 - 未选择议程项';
+      return `主发言名单 - ${`${agendaNumberMap[selectedAgenda.id] || ''} ${sanitizeAgendaTitle(selectedAgenda.title)}`.trim()}`;
+    }
     if (!selectedAgenda) return '未选择议程项';
     return `${agendaNumberMap[selectedAgenda.id] || ''} ${sanitizeAgendaTitle(selectedAgenda.title)}`.trim();
   }, [discussionMode, selectedAgenda, discussionFileName, agendaNumberMap]);
+  const mainSpeakerCapacity = useMemo(() => {
+    const unitSeconds = parseInt(customTime, 10);
+    const safeUnitSeconds = Number.isNaN(unitSeconds) || unitSeconds <= 0 ? 120 : unitSeconds;
+    const totalSeconds =
+      typeof totalCountdownSeconds === 'number' && totalCountdownSeconds >= 0
+        ? totalCountdownSeconds
+        : parseInt(totalDurationInput, 10);
+    if (Number.isNaN(totalSeconds) || totalSeconds <= 0) return null;
+    return Math.floor(totalSeconds / safeUnitSeconds);
+  }, [customTime, totalCountdownSeconds, totalDurationInput]);
   const countrySearchIndex = useMemo(() => {
     const index = new Map<string, string[]>();
     countries.forEach((country) => {
@@ -211,6 +226,12 @@ export function MeetingPage() {
   }, [totalCountdownSeconds]);
 
   useEffect(() => {
+    if (discussionMode === 'agenda' || discussionMode === 'main-speaker-list') {
+      setShowTotalTimer(false);
+    }
+  }, [discussionMode]);
+
+  useEffect(() => {
     const rawState = localStorage.getItem(MEETING_PAGE_STATE_KEY);
     if (!rawState) {
       setIsStateHydrated(true);
@@ -230,9 +251,12 @@ export function MeetingPage() {
           ? parsed.totalCountdownSeconds
           : null
       );
-      setShowTotalTimer(Boolean(parsed.showTotalTimer));
       setCustomTime(typeof parsed.customTime === 'string' ? parsed.customTime : '120');
-      setDiscussionMode(parsed.discussionMode ?? 'agenda');
+      const restoredDiscussionMode = parsed.discussionMode ?? 'agenda';
+      setDiscussionMode(restoredDiscussionMode);
+      const shouldHideTotalTimerByDefault =
+        restoredDiscussionMode === 'agenda' || restoredDiscussionMode === 'main-speaker-list';
+      setShowTotalTimer(shouldHideTotalTimerByDefault ? false : Boolean(parsed.showTotalTimer));
       setSelectedAgendaId(typeof parsed.selectedAgendaId === 'string' ? parsed.selectedAgendaId : '');
       setDiscussionFileName(typeof parsed.discussionFileName === 'string' ? parsed.discussionFileName : '');
       // 页面重新进入后默认暂停，避免后台计时导致状态跳变
@@ -332,6 +356,20 @@ export function MeetingPage() {
   const handleAddSpeaker = (inputValue?: string) => {
     const value = (inputValue ?? newSpeaker).trim();
     if (!value || speakerSet.has(value)) return;
+    if (discussionMode === 'moderated-caucus') {
+      if (mainSpeakerCapacity === null) {
+        alert('有主持核心磋商模式下，请先设置总时长。');
+        return;
+      }
+      if (mainSpeakerCapacity <= 0) {
+        alert('总时长不足以容纳 1 位代表，请调整总时长或单位时长。');
+        return;
+      }
+      if (speakers.length >= mainSpeakerCapacity) {
+        alert(`主发言名单上限为 ${mainSpeakerCapacity} 位，无法继续添加。`);
+        return;
+      }
+    }
     setSpeakers((prev) => [...prev, value]);
     setNewSpeaker('');
     setIsSpeakerSearchOpen(false);
@@ -491,13 +529,37 @@ export function MeetingPage() {
                       : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
                   )}
                 >
-                  文件
+                  主题
+                </button>
+                <button
+                  onClick={() => setDiscussionMode('moderated-caucus')}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-semibold transition-colors",
+                    discussionMode === 'moderated-caucus'
+                      ? "bg-slate-900 text-white"
+                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                  )}
+                >
+                  有主持核心磋商
+                </button>
+                <button
+                  onClick={() => setDiscussionMode('main-speaker-list')}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-semibold transition-colors",
+                    discussionMode === 'main-speaker-list'
+                      ? "bg-slate-900 text-white"
+                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                  )}
+                >
+                  主发言名单
                 </button>
               </div>
-              {discussionMode === 'agenda' && (
+              {(discussionMode === 'agenda' || discussionMode === 'main-speaker-list') && (
                 <div className="rounded-2xl border border-slate-200/80 bg-white p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-semibold tracking-wide text-slate-500">选择正在讨论的议程项</p>
+                    <p className="text-xs font-semibold tracking-wide text-slate-500">
+                      {discussionMode === 'main-speaker-list' ? '选择主发言名单对应议题' : '选择正在讨论的议程项'}
+                    </p>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-slate-400">{agendaItems.length} 项</span>
                       <button
@@ -609,7 +671,7 @@ export function MeetingPage() {
                   type="text"
                   value={discussionFileName}
                   onChange={(e) => setDiscussionFileName(e.target.value)}
-                  placeholder="请输入要讨论的文件名"
+                  placeholder="请输入要讨论的主题名"
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:ring-2 focus:ring-slate-200 outline-none"
                 />
               )}
@@ -767,6 +829,11 @@ export function MeetingPage() {
                 <UserRoundPlus className="w-5 h-5" />
               </button>
             </div>
+            {discussionMode === 'moderated-caucus' && (
+              <p className="mb-3 text-xs text-slate-500">
+                上限 {mainSpeakerCapacity ?? 0} 位（总时长 / 单位时长），当前 {speakers.length} 位
+              </p>
+            )}
 
             <div className="h-[32rem] overflow-y-auto pr-2 space-y-2.5 custom-scrollbar">
               {!currentSpeaker ? (
