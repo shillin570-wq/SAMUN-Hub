@@ -36,6 +36,7 @@ interface PersistedMeetingPageState {
   discussionMode: 'agenda' | 'consultation' | 'debate' | 'file' | 'moderated-caucus' | 'main-speaker-list';
   selectedAgendaId: string;
   discussionFileName: string;
+  moderatedCaucusTopic: string;
 }
 
 const normalizeKeyword = (value: string) =>
@@ -83,6 +84,7 @@ export function MeetingPage() {
   const [discussionMode, setDiscussionMode] = useState<'agenda' | 'consultation' | 'debate' | 'file' | 'moderated-caucus' | 'main-speaker-list'>('agenda');
   const [selectedAgendaId, setSelectedAgendaId] = useState<string>('');
   const [discussionFileName, setDiscussionFileName] = useState('');
+  const [moderatedCaucusTopic, setModeratedCaucusTopic] = useState('');
   const [isAgendaSelectorCollapsed, setIsAgendaSelectorCollapsed] = useState(true);
   const [collapsedAgendaGroupIds, setCollapsedAgendaGroupIds] = useState<string[]>([]);
   const [isStateHydrated, setIsStateHydrated] = useState(false);
@@ -153,14 +155,13 @@ export function MeetingPage() {
     if (discussionMode === 'consultation') return '自由磋商';
     if (discussionMode === 'debate') return '自由辩论';
     if (discussionMode === 'file') return discussionFileName.trim() ? `主题 - ${discussionFileName.trim()}` : '主题 - 未填写主题名';
-    if (discussionMode === 'moderated-caucus') return '有主持核心磋商';
-    if (discussionMode === 'main-speaker-list') {
-      if (!selectedAgenda) return '主发言名单 - 未选择议程项';
-      return `主发言名单 - ${`${agendaNumberMap[selectedAgenda.id] || ''} ${sanitizeAgendaTitle(selectedAgenda.title)}`.trim()}`;
+    if (discussionMode === 'moderated-caucus') {
+      return moderatedCaucusTopic.trim() ? `有主持核心磋商 - ${moderatedCaucusTopic.trim()}` : '有主持核心磋商 - 未填写主题';
     }
+    if (discussionMode === 'main-speaker-list') return '主发言名单';
     if (!selectedAgenda) return '未选择议程项';
     return `${agendaNumberMap[selectedAgenda.id] || ''} ${sanitizeAgendaTitle(selectedAgenda.title)}`.trim();
-  }, [discussionMode, selectedAgenda, discussionFileName, agendaNumberMap]);
+  }, [discussionMode, selectedAgenda, discussionFileName, moderatedCaucusTopic, agendaNumberMap]);
   const mainSpeakerCapacity = useMemo(() => {
     const unitSeconds = parseInt(customTime, 10);
     const safeUnitSeconds = Number.isNaN(unitSeconds) || unitSeconds <= 0 ? 120 : unitSeconds;
@@ -226,9 +227,7 @@ export function MeetingPage() {
   }, [totalCountdownSeconds]);
 
   useEffect(() => {
-    if (discussionMode === 'agenda' || discussionMode === 'main-speaker-list') {
-      setShowTotalTimer(false);
-    }
+    setShowTotalTimer(discussionMode === 'moderated-caucus');
   }, [discussionMode]);
 
   useEffect(() => {
@@ -254,11 +253,10 @@ export function MeetingPage() {
       setCustomTime(typeof parsed.customTime === 'string' ? parsed.customTime : '120');
       const restoredDiscussionMode = parsed.discussionMode ?? 'agenda';
       setDiscussionMode(restoredDiscussionMode);
-      const shouldHideTotalTimerByDefault =
-        restoredDiscussionMode === 'agenda' || restoredDiscussionMode === 'main-speaker-list';
-      setShowTotalTimer(shouldHideTotalTimerByDefault ? false : Boolean(parsed.showTotalTimer));
+      setShowTotalTimer(restoredDiscussionMode === 'moderated-caucus');
       setSelectedAgendaId(typeof parsed.selectedAgendaId === 'string' ? parsed.selectedAgendaId : '');
       setDiscussionFileName(typeof parsed.discussionFileName === 'string' ? parsed.discussionFileName : '');
+      setModeratedCaucusTopic(typeof parsed.moderatedCaucusTopic === 'string' ? parsed.moderatedCaucusTopic : '');
       // 页面重新进入后默认暂停，避免后台计时导致状态跳变
       setIsRunning(false);
     } catch (error) {
@@ -287,6 +285,7 @@ export function MeetingPage() {
       discussionMode,
       selectedAgendaId,
       discussionFileName,
+      moderatedCaucusTopic,
     };
 
     lastPersistAtRef.current = now;
@@ -303,6 +302,7 @@ export function MeetingPage() {
     discussionMode,
     selectedAgendaId,
     discussionFileName,
+    moderatedCaucusTopic,
     isRunning,
     isStateHydrated,
   ]);
@@ -322,6 +322,7 @@ export function MeetingPage() {
         discussionMode,
         selectedAgendaId,
         discussionFileName,
+        moderatedCaucusTopic,
       };
       localStorage.setItem(MEETING_PAGE_STATE_KEY, JSON.stringify(stateToPersist));
     };
@@ -338,6 +339,7 @@ export function MeetingPage() {
     discussionMode,
     selectedAgendaId,
     discussionFileName,
+    moderatedCaucusTopic,
   ]);
 
   const formatTime = (seconds: number) => {
@@ -554,12 +556,10 @@ export function MeetingPage() {
                   主发言名单
                 </button>
               </div>
-              {(discussionMode === 'agenda' || discussionMode === 'main-speaker-list') && (
+              {discussionMode === 'agenda' && (
                 <div className="rounded-2xl border border-slate-200/80 bg-white p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-semibold tracking-wide text-slate-500">
-                      {discussionMode === 'main-speaker-list' ? '选择主发言名单对应议题' : '选择正在讨论的议程项'}
-                    </p>
+                    <p className="text-xs font-semibold tracking-wide text-slate-500">选择正在讨论的议程项</p>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-slate-400">{agendaItems.length} 项</span>
                       <button
@@ -672,6 +672,15 @@ export function MeetingPage() {
                   value={discussionFileName}
                   onChange={(e) => setDiscussionFileName(e.target.value)}
                   placeholder="请输入要讨论的主题名"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:ring-2 focus:ring-slate-200 outline-none"
+                />
+              )}
+              {discussionMode === 'moderated-caucus' && (
+                <input
+                  type="text"
+                  value={moderatedCaucusTopic}
+                  onChange={(e) => setModeratedCaucusTopic(e.target.value)}
+                  placeholder="请输入有主持核心磋商主题"
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:ring-2 focus:ring-slate-200 outline-none"
                 />
               )}
