@@ -78,6 +78,8 @@ const getRequiredVotesByRatio = (
   return Math.max(1, Math.floor(rawRequired));
 };
 
+const formatCountryList = (countries: string[]) => (countries.length > 0 ? countries.join('、') : '无');
+
 export function VotingPage() {
   const { meetingInfo, countries, attendance, countryRights, setCountryRights, setCurrentPage, addMeetingLog } = useMeeting();
   
@@ -293,10 +295,14 @@ export function VotingPage() {
     if (phase !== 'result' || hasLoggedResultRef.current) return;
     hasLoggedResultRef.current = true;
     const statusText = results.passed ? '通过' : '未通过';
+    const approveCountries = votingCountries.filter((country) => results.finalVotes[country] === 'approve');
+    const opposeCountries = votingCountries.filter((country) => results.finalVotes[country] === 'oppose');
+    const abstainCountries = votingCountries.filter((country) => results.finalVotes[country] === 'abstain');
+    const uncastCountries = votingCountries.filter((country) => !results.finalVotes[country]);
     addMeetingLog(
       'vote-result',
       `投票结果：${topic || '未命名议题'}`,
-      `结果${statusText}；赞成 ${results.approve}，反对 ${results.oppose}，弃权 ${results.abstain}，总计 ${results.total}${results.hasVeto ? '；触发一票否决' : ''}`
+      `结果${statusText}；赞成 ${results.approve}，反对 ${results.oppose}，弃权 ${results.abstain}，总计 ${results.total}${results.hasVeto ? '；触发一票否决' : ''}；赞成票：${formatCountryList(approveCountries)}；反对票：${formatCountryList(opposeCountries)}；弃权票：${formatCountryList(abstainCountries)}；未投票：${formatCountryList(uncastCountries)}`
     );
   }, [phase, results, topic, addMeetingLog]);
 

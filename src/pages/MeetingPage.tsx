@@ -39,6 +39,7 @@ interface PersistedMeetingPageState {
   selectedAgendaId: string;
   discussionFileName: string;
   moderatedCaucusTopic: string;
+  isSoundEnabled?: boolean;
 }
 
 type DiscussionMode = 'agenda' | 'consultation' | 'debate' | 'file' | 'moderated-caucus' | 'main-speaker-list';
@@ -138,7 +139,11 @@ export function MeetingPage() {
   const [moderatedCaucusTopic, setModeratedCaucusTopic] = useState('');
   const [isAgendaSelectorCollapsed, setIsAgendaSelectorCollapsed] = useState(true);
   const [collapsedAgendaGroupIds, setCollapsedAgendaGroupIds] = useState<string[]>([]);
+  const [isSoundEnabled, setIsSoundEnabled] = useState(true);
   const [isStateHydrated, setIsStateHydrated] = useState(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const previousTimeLeftBySectionRef = useRef<Record<string, number>>({});
+  const previousTotalCountdownBySectionRef = useRef<Record<string, number | null>>({});
   const lastPersistAtRef = useRef(0);
   const meetingSignature = useMemo(
     () => [meetingInfo.committee, meetingInfo.topic, meetingInfo.recorder].join('||'),
@@ -366,6 +371,9 @@ export function MeetingPage() {
       setSelectedAgendaId(restoredSelectedAgendaId);
       setDiscussionFileName(typeof parsed.discussionFileName === 'string' ? parsed.discussionFileName : '');
       setModeratedCaucusTopic(typeof parsed.moderatedCaucusTopic === 'string' ? parsed.moderatedCaucusTopic : '');
+      if (typeof parsed.isSoundEnabled === 'boolean') {
+        setIsSoundEnabled(parsed.isSoundEnabled);
+      }
     } catch (error) {
       console.error('Failed to parse meeting page state', error);
     } finally {
@@ -388,6 +396,7 @@ export function MeetingPage() {
       selectedAgendaId,
       discussionFileName,
       moderatedCaucusTopic,
+      isSoundEnabled,
     };
 
     lastPersistAtRef.current = now;
@@ -400,6 +409,7 @@ export function MeetingPage() {
     selectedAgendaId,
     discussionFileName,
     moderatedCaucusTopic,
+    isSoundEnabled,
     isRunning,
     isStateHydrated,
   ]);
@@ -415,6 +425,7 @@ export function MeetingPage() {
         selectedAgendaId,
         discussionFileName,
         moderatedCaucusTopic,
+        isSoundEnabled,
       };
       localStorage.setItem(MEETING_PAGE_STATE_KEY, JSON.stringify(stateToPersist));
     };
@@ -427,6 +438,7 @@ export function MeetingPage() {
     selectedAgendaId,
     discussionFileName,
     moderatedCaucusTopic,
+    isSoundEnabled,
   ]);
 
   const formatTime = (seconds: number) => {
@@ -551,6 +563,38 @@ export function MeetingPage() {
     }));
   };
 
+  const playTone = (frequency: number, durationSeconds: number, gainValue = 0.03) => {
+    if (typeof window === 'undefined') return;
+    if (!isSoundEnabled) return;
+    const AudioContextConstructor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextConstructor) return;
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextConstructor();
+    }
+    const context = audioContextRef.current;
+    if (context.state === 'suspended') {
+      void context.resume();
+    }
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = frequency;
+    gain.gain.value = gainValue;
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + durationSeconds);
+  };
+
+  const playCountdownBeep = () => {
+    playTone(920, 0.08, 0.025);
+  };
+
+  const playTimeUpBeep = () => {
+    playTone(700, 0.12, 0.03);
+    window.setTimeout(() => playTone(980, 0.18, 0.035), 120);
+  };
+
   const handleToggleTimer = () => {
     if (showTotalTimer && totalCountdownSeconds === 0) return;
     if (isRunning) {
@@ -596,6 +640,38 @@ export function MeetingPage() {
       isRunning: true,
     }));
   };
+
+  useEffect(() => {
+    const previousTimeLeft = previousTimeLeftBySectionRef.current[currentSectionKey];
+    const previousTotalCountdown = previousTotalCountdownBySectionRef.current[currentSectionKey];
+
+    const hasTimeLeftChanged = typeof previousTimeLeft === 'number' && previousTimeLeft !== timeLeft;
+    const isCountdownTick = hasTimeLeftChanged && previousTimeLeft > timeLeft;
+    const unitTimerReachedTenSeconds =
+      typeof previousTimeLeft === 'number' && previousTimeLeft > 10 && timeLeft === 10;
+    const totalTimerReachedTenSeconds =
+      showTotalTimer &&
+      typeof previousTotalCountdown === 'number' &&
+      previousTotalCountdown > 10 &&
+      totalCountdownSeconds === 10;
+    if (isRunning && isCountdownTick && (unitTimerReachedTenSeconds || totalTimerReachedTenSeconds)) {
+      playCountdownBeep();
+    }
+
+    const unitTimerEnded = typeof previousTimeLeft === 'number' && previousTimeLeft > 0 && timeLeft === 0;
+    const totalTimerEnded =
+      showTotalTimer &&
+      typeof previousTotalCountdown === 'number' &&
+      previousTotalCountdown > 0 &&
+      totalCountdownSeconds === 0;
+    if (unitTimerEnded || totalTimerEnded) {
+      playTimeUpBeep();
+    }
+
+    previousTimeLeftBySectionRef.current[currentSectionKey] = timeLeft;
+    previousTotalCountdownBySectionRef.current[currentSectionKey] =
+      typeof totalCountdownSeconds === 'number' ? totalCountdownSeconds : null;
+  }, [currentSectionKey, isRunning, showTotalTimer, timeLeft, totalCountdownSeconds, isSoundEnabled]);
 
   const toggleAgendaGroup = (levelOneId: string) => {
     setCollapsedAgendaGroupIds((prev) =>
@@ -960,6 +1036,21 @@ export function MeetingPage() {
                     {showTotalTimer ? '隐藏' : '显示'}
                   </button>
                 </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-slate-500">提示音</p>
+                <button
+                  type="button"
+                  onClick={() => setIsSoundEnabled((prev) => !prev)}
+                  className={cn(
+                    "rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors",
+                    isSoundEnabled
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                      : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
+                  )}
+                >
+                  {isSoundEnabled ? '已开启（点击关闭）' : '已关闭（点击开启）'}
+                </button>
               </div>
             </div>
           </div>
