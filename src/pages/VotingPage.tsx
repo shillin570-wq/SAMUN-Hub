@@ -11,6 +11,7 @@ type VoteType = 'approve' | 'oppose' | 'abstain' | 'skip' | null;
 type FinalVoteType = 'approve' | 'oppose' | 'abstain';
 type RuleType = 'absolute' | 'simple' | 'custom';
 type RatioBaseType = 'total' | 'casted' | 'decisive';
+const VOTING_ROLL_CALL_KEY = 'samun_voting_roll_call_bridge_v1';
 
 interface CustomRuleConfig {
   passRatio: string;
@@ -21,6 +22,13 @@ interface CustomRuleConfig {
   enableVeto: boolean;
   abstainLimitEnabled: boolean;
   abstainLimitRatio: string;
+}
+
+interface VotingRollCallBridge {
+  status: 'awaiting-roll-call' | 'ready-to-start';
+  topic: string;
+  rule: RuleType;
+  customRule: CustomRuleConfig;
 }
 
 const RATIO_OPTIONS = ['1/2', '2/3', '3/4', '4/5'] as const;
@@ -133,6 +141,24 @@ export function VotingPage() {
     }
   }, [phase, currentRound, currentCountryIdx, firstRoundVotes, secondRoundVotes]);
 
+  useEffect(() => {
+    const rawBridge = localStorage.getItem(VOTING_ROLL_CALL_KEY);
+    if (!rawBridge) return;
+
+    try {
+      const bridge = JSON.parse(rawBridge) as VotingRollCallBridge;
+      if (bridge.status !== 'ready-to-start') return;
+      setTopic(bridge.topic);
+      setRule(bridge.rule);
+      setCustomRule(bridge.customRule);
+      localStorage.removeItem(VOTING_ROLL_CALL_KEY);
+      beginVotingSession();
+    } catch (error) {
+      console.error('Failed to parse voting roll call bridge data', error);
+      localStorage.removeItem(VOTING_ROLL_CALL_KEY);
+    }
+  }, []);
+
   const validateVotingSetup = () => {
     if (!topic.trim()) {
       alert('请输入投票主题');
@@ -177,6 +203,13 @@ export function VotingPage() {
   };
 
   const handleStartVotingWithRollCall = () => {
+    const bridge: VotingRollCallBridge = {
+      status: 'awaiting-roll-call',
+      topic,
+      rule,
+      customRule,
+    };
+    localStorage.setItem(VOTING_ROLL_CALL_KEY, JSON.stringify(bridge));
     setShowRollCallChoice(false);
     setCurrentPage('roll-call');
   };

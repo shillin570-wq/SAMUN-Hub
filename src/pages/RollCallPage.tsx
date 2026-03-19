@@ -6,6 +6,7 @@ import { cn } from '../lib/utils';
 import { CheckCircle2, XCircle, Clock } from 'lucide-react';
 
 type RollCallStatus = 'pending' | 'present' | 'absent';
+const VOTING_ROLL_CALL_KEY = 'samun_voting_roll_call_bridge_v1';
 
 export function RollCallPage() {
   const { meetingInfo, countries, attendance, setAttendance, setCurrentPage, addMeetingLog } = useMeeting();
@@ -58,6 +59,20 @@ export function RollCallPage() {
       `出席 ${presentCountries.length} 国，缺席 ${absentCountries.length} 国。出席：${presentCountries.join('、') || '无'}；缺席：${absentCountries.join('、') || '无'}`
     );
     setAttendance(newAttendance);
+    const rawBridge = localStorage.getItem(VOTING_ROLL_CALL_KEY);
+    if (rawBridge) {
+      try {
+        const parsed = JSON.parse(rawBridge) as { status?: string };
+        if (parsed.status === 'awaiting-roll-call') {
+          localStorage.setItem(VOTING_ROLL_CALL_KEY, JSON.stringify({ ...parsed, status: 'ready-to-start' }));
+          setCurrentPage('voting');
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to parse voting roll call bridge data', error);
+        localStorage.removeItem(VOTING_ROLL_CALL_KEY);
+      }
+    }
     setCurrentPage('meeting');
   };
 
@@ -145,7 +160,15 @@ export function RollCallPage() {
       </Card>
 
       <div className="flex justify-center gap-3 pt-1">
-        <Button variant="secondary" onClick={() => setCurrentPage('meeting')}>返回会议</Button>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            localStorage.removeItem(VOTING_ROLL_CALL_KEY);
+            setCurrentPage('meeting');
+          }}
+        >
+          返回会议
+        </Button>
         <Button 
           variant={stats.pending === 0 ? "primary" : "secondary"}
           onClick={finishRollCall} 
