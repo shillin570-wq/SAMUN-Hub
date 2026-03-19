@@ -14,7 +14,7 @@ export function EntryGatePage() {
       <div className="relative h-full max-w-6xl mx-auto px-6 md:px-10 py-12 md:py-16 flex flex-col">
         <div className="text-center space-y-3 mt-10">
           <p className="text-xs tracking-[0.35em] uppercase text-brand-200/90">模联 连接青年人与世界</p>
-          <h1 className="text-5xl md:text-7xl font-semibold tracking-tight text-white drop-shadow-[0_8px_22px_rgba(210,83,101,0.28)]">SAMUN</h1>
+          <h1 className="text-5xl md:text-7xl font-semibold tracking-tight text-white drop-shadow-[0_8px_22px_rgba(210,83,101,0.28)]">SAMUN OS</h1>
           <p className="text-slate-300 text-lg md:text-xl">选择开始方式</p>
         </div>
 
