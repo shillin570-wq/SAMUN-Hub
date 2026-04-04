@@ -1,9 +1,12 @@
 import React from 'react';
 import { useMeeting } from '../context/MeetingContext';
-import { PlusCircle, FolderOpen } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
+import { PlusCircle, FolderOpen, Languages } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 export function EntryGatePage() {
   const { archives, setCurrentPage, loadArchive } = useMeeting();
+  const { t, displayCountry, locale, useEnglishUi, useChineseUi } = useLanguage();
 
   return (
     <div className="h-full w-full relative overflow-hidden bg-slate-950 stage-entrance">
@@ -12,10 +15,24 @@ export function EntryGatePage() {
       <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/30 to-black/70" />
 
       <div className="relative h-full max-w-6xl mx-auto px-6 md:px-10 py-12 md:py-16 flex flex-col">
-        <div className="text-center space-y-3 mt-10">
-          <p className="text-xs tracking-[0.35em] uppercase text-brand-200/90">模联 连接青年人与世界</p>
+        <div className="flex justify-end shrink-0 -mt-2 md:-mt-4">
+          <button
+            type="button"
+            onClick={locale === 'zh' ? useEnglishUi : useChineseUi}
+            className={cn(
+              'inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/90',
+              'hover:bg-white/10 hover:border-white/25 transition-colors'
+            )}
+          >
+            <Languages className="w-4 h-4 text-brand-200" aria-hidden />
+            {locale === 'zh' ? t('lang.englishUi') : t('lang.chineseUi')}
+          </button>
+        </div>
+
+        <div className="text-center space-y-3 mt-6 md:mt-8">
+          <p className="text-xs tracking-[0.35em] uppercase text-brand-200/90">{t('entry.tagline')}</p>
           <h1 className="text-5xl md:text-7xl font-semibold tracking-tight text-white drop-shadow-[0_8px_22px_rgba(210,83,101,0.28)]">SAMUN OS</h1>
-          <p className="text-slate-300 text-lg md:text-xl">选择开始方式</p>
+          <p className="text-slate-300 text-lg md:text-xl">{t('entry.subtitle')}</p>
         </div>
 
         <div className="flex flex-col md:flex-row items-center justify-center gap-8 mt-14">
@@ -25,7 +42,7 @@ export function EntryGatePage() {
           >
             <PlusCircle className="w-6 h-6 text-brand-300 group-hover:scale-110 transition-transform" />
             <span className="relative">
-              新建会议
+              {t('entry.newMeeting')}
               <span className="absolute left-0 -bottom-1 h-px w-full bg-brand-300/80 scale-x-0 group-hover:scale-x-100 origin-left transition-transform" />
             </span>
           </button>
@@ -39,20 +56,20 @@ export function EntryGatePage() {
           >
             <FolderOpen className="w-6 h-6 text-brand-300 group-hover:scale-110 transition-transform" />
             <span className="relative">
-              快速读取最近存档
+              {t('entry.quickLoad')}
               <span className="absolute left-0 -bottom-1 h-px w-full bg-brand-300/80 scale-x-0 group-hover:scale-x-100 origin-left transition-transform" />
             </span>
           </button>
         </div>
 
         <div className="mt-8 text-center text-sm text-slate-400">
-          或从下方列表选择任意历史存档继续
+          {t('entry.orPickArchive')}
         </div>
 
         <div className="mt-4 flex-1 min-h-0">
           {archives.length === 0 ? (
             <div className="h-full flex items-center justify-center text-slate-500">
-              暂无存档，请先新建会议
+              {t('entry.noArchives')}
             </div>
           ) : (
             <div className="h-full overflow-y-auto custom-scrollbar pr-1 space-y-1.5">
@@ -63,10 +80,10 @@ export function EntryGatePage() {
                   className="w-full text-left rounded-xl px-3 py-3 border border-transparent hover:border-white/10 hover:bg-white/5 transition-colors"
                 >
                   <div className="font-semibold text-white/95">
-                    {archive.meetingInfo.committee || '未命名委员会'}
+                    {displayCountry(archive.meetingInfo.committee) || t('common.unnamedCommittee')}
                   </div>
                   <div className="text-sm text-slate-400 mt-0.5">
-                    {archive.meetingInfo.topic || '无议题'}
+                    {archive.meetingInfo.topic || t('common.noTopic')}
                   </div>
                 </button>
               ))}

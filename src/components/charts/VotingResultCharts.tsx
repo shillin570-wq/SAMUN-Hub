@@ -13,6 +13,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface ChartItem {
   name: string;
@@ -27,11 +28,12 @@ interface VotingResultChartsProps {
 }
 
 export function VotingResultCharts({ pieData, barData, passed }: VotingResultChartsProps) {
+  const { t } = useLanguage();
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <Card className="apple-panel border-0 stage-entrance-delay">
         <CardHeader>
-          <CardTitle className="text-base">票型占比</CardTitle>
+          <CardTitle className="text-base">{t('charts.pieTitle')}</CardTitle>
         </CardHeader>
         <CardContent className="h-[320px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -50,7 +52,7 @@ export function VotingResultCharts({ pieData, barData, passed }: VotingResultCha
 
       <Card className="apple-panel border-0 stage-entrance-delay">
         <CardHeader>
-          <CardTitle className="text-base">票数统计</CardTitle>
+          <CardTitle className="text-base">{t('charts.barTitle')}</CardTitle>
         </CardHeader>
         <CardContent className="h-[320px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -58,8 +60,8 @@ export function VotingResultCharts({ pieData, barData, passed }: VotingResultCha
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.35)" />
               <XAxis dataKey="name" stroke="rgba(71, 85, 105, 0.85)" />
               <YAxis stroke="rgba(71, 85, 105, 0.85)" />
-              <Tooltip separator="：" />
-              <Bar dataKey="value" name="数量" fill={passed ? '#059669' : '#9f4f59'} radius={[8, 8, 0, 0]} />
+              <Tooltip separator=": " />
+              <Bar dataKey="value" name={t('charts.barName')} fill={passed ? '#059669' : '#9f4f59'} radius={[8, 8, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

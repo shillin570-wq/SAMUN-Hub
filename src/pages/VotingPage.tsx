@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useMeeting } from '../context/MeetingContext';
+import { useLanguage } from '../context/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -68,12 +69,6 @@ const isValidRatio = (ratio: string) => {
   return numerator > 0 && denominator > 0 && numerator <= denominator;
 };
 
-const getPassBaseLabel = (base: RatioBaseType) => {
-  if (base === 'total') return '参与投票总数';
-  if (base === 'casted') return '已投票总数(含弃权)';
-  return '有效票(赞成+反对)';
-};
-
 const getRequiredVotesByRatio = (
   base: number,
   numerator: number,
@@ -86,10 +81,15 @@ const getRequiredVotesByRatio = (
   return Math.max(1, Math.floor(rawRequired));
 };
 
-const formatCountryList = (countries: string[]) => (countries.length > 0 ? countries.join('、') : '无');
-
 export function VotingPage() {
   const { meetingInfo, countries, attendance, countryRights, setCountryRights, setCurrentPage, addMeetingLog } = useMeeting();
+  const { t, locale, displayCountry, listJoiner } = useLanguage();
+
+  const getPassBaseLabel = (base: RatioBaseType) =>
+    base === 'total' ? t('vote.baseTotal') : base === 'casted' ? t('vote.baseCasted') : t('vote.baseDecisive');
+
+  const logI18nRef = useRef({ t, displayCountry, listJoiner });
+  logI18nRef.current = { t, displayCountry, listJoiner };
   
   const [phase, setPhase] = useState<VotePhase>('setup');
   const [topic, setTopic] = useState('');
@@ -161,21 +161,21 @@ export function VotingPage() {
 
   const validateVotingSetup = () => {
     if (!topic.trim()) {
-      alert('请输入投票主题');
+      alert(t('vote.alertNoTopic'));
       return false;
     }
     if (rule === 'custom') {
       if (!isValidRatio(customRule.passRatio)) {
-        alert('通过比例格式无效，请输入“分子/分母”，且分子不大于分母（例如 2/3）。');
+        alert(t('vote.alertBadRatio'));
         return false;
       }
       if (customRule.abstainLimitEnabled && !isValidRatio(customRule.abstainLimitRatio)) {
-        alert('弃权上限比例格式无效，请输入“分子/分母”（例如 1/2）。');
+        alert(t('vote.alertBadAbstain'));
         return false;
       }
     }
     if (votingCountries.length === 0) {
-      alert('当前没有可参与投票的国家，请检查观察员设置。');
+      alert(t('vote.alertNoVoters'));
       return false;
     }
     return true;
@@ -327,45 +327,54 @@ export function VotingPage() {
   useEffect(() => {
     if (phase !== 'result' || hasLoggedResultRef.current) return;
     hasLoggedResultRef.current = true;
-    const statusText = results.passed ? '通过' : '未通过';
+    const { t: lt, displayCountry: dC, listJoiner: lj } = logI18nRef.current;
+    const fmt = (clist: string[]) =>
+      clist.length > 0 ? clist.map(dC).join(lj) : lt('common.none');
+    const statusText = results.passed ? lt('vote.statusPassed') : lt('vote.statusFailed');
     const approveCountries = votingCountries.filter((country) => results.finalVotes[country] === 'approve');
     const opposeCountries = votingCountries.filter((country) => results.finalVotes[country] === 'oppose');
     const abstainCountries = votingCountries.filter((country) => results.finalVotes[country] === 'abstain');
     const uncastCountries = votingCountries.filter((country) => !results.finalVotes[country]);
     addMeetingLog(
       'vote-result',
-      `投票结果：${topic || '未命名议题'}`,
-      `结果${statusText}；赞成 ${results.approve}，反对 ${results.oppose}，弃权 ${results.abstain}，总计 ${results.total}${results.hasVeto ? '；触发一票否决' : ''}；赞成票：${formatCountryList(approveCountries)}；反对票：${formatCountryList(opposeCountries)}；弃权票：${formatCountryList(abstainCountries)}；未投票：${formatCountryList(uncastCountries)}`
+      lt('vote.logTitle', { topic: topic.trim() || lt('common.noTopic') }),
+      lt('vote.logDetail', {
+        status: statusText,
+        a: results.approve,
+        o: results.oppose,
+        ab: results.abstain,
+        t: results.total,
+        veto: results.hasVeto ? lt('vote.logVeto') : '',
+        yesList: fmt(approveCountries),
+        noList: fmt(opposeCountries),
+        abList: fmt(abstainCountries),
+        pending: fmt(uncastCountries),
+      })
     );
-  }, [phase, results, topic, addMeetingLog]);
+  }, [phase, results, topic, addMeetingLog, votingCountries]);
 
   const getRuleDescription = (res: VoteResults) => {
-    if (rule === 'absolute') {
-      return '绝对多数：需达到 2/3 赞成，且弃权不过半，同时不得触发一票否决。';
-    }
-    if (rule === 'simple') {
-      return '简单多数：赞成票需多于反对票，同时不得触发一票否决。';
-    }
+    if (rule === 'absolute') return t('vote.ruleDescAbsolute');
+    if (rule === 'simple') return t('vote.ruleDescSimple');
 
+    const sep = locale === 'zh' ? '；' : '; ';
     const customRules: string[] = [];
-    customRules.push(`赞成票需达到 ${customRule.passRatio}（基数：${getPassBaseLabel(customRule.passRatioBase)}）`);
-    customRules.push(customRule.passRatioRoundUp ? '通过票门槛按向上取整计算' : '通过票门槛按向下取整计算');
-    if (customRule.requireApproveGreaterThanOppose) {
-      customRules.push('赞成票需严格大于反对票');
-    }
-    customRules.push(customRule.allowSkipInFirstRound ? '允许第一轮跳过' : '不允许第一轮跳过');
-    if (customRule.enableVeto) {
-      customRules.push('启用一票否决');
-    } else {
-      customRules.push('不启用一票否决');
-    }
+    customRules.push(
+      t('vote.customNeedApprove', {
+        r: customRule.passRatio,
+        b: getPassBaseLabel(customRule.passRatioBase),
+      })
+    );
+    customRules.push(customRule.passRatioRoundUp ? t('vote.customRoundUp') : t('vote.customRoundDown'));
+    if (customRule.requireApproveGreaterThanOppose) customRules.push(t('vote.customApproveGt'));
+    customRules.push(customRule.allowSkipInFirstRound ? t('vote.customAllowSkip') : t('vote.customNoSkip'));
+    customRules.push(customRule.enableVeto ? t('vote.customVetoOn') : t('vote.customVetoOff'));
     if (customRule.abstainLimitEnabled) {
-      customRules.push(`弃权票不超过参与投票总数的 ${customRule.abstainLimitRatio}`);
+      customRules.push(t('vote.customAbstainCap', { r: customRule.abstainLimitRatio }));
     }
-    if (customRule.enableVeto && res.hasVeto) {
-      customRules.push('当前已触发一票否决');
-    }
-    return `自定义规则：${customRules.join('；')}。`;
+    if (customRule.enableVeto && res.hasVeto) customRules.push(t('vote.customVetoTriggered'));
+    const end = locale === 'zh' ? '。' : '.';
+    return `${t('vote.ruleDescCustomPrefix')}${customRules.join(sep)}${end}`;
   };
 
   const handleToggleVeto = (country: string) => {
@@ -398,32 +407,34 @@ export function VotingPage() {
 
   const getCountryVoteStatus = (country: string) => {
     if (countryRights[country]?.observer) {
-      return { label: '观察员', tone: 'observer' as const };
+      return { label: t('vote.observerBadge'), tone: 'observer' as const };
     }
 
     if (currentRound === 1) {
       const vote = firstRoundVotes[country];
-      if (vote === 'approve') return { label: '赞成', tone: 'approve' as const };
-      if (vote === 'oppose') return { label: '反对', tone: 'oppose' as const };
-      if (vote === 'abstain') return { label: '弃权', tone: 'abstain' as const };
-      if (vote === 'skip') return { label: '待二轮', tone: 'skip' as const };
-      if (country === currentRoundCountries[currentCountryIdx]) return { label: '当前待投', tone: 'current' as const };
-      return { label: '待投票', tone: 'pending' as const };
+      if (vote === 'approve') return { label: t('vote.approve'), tone: 'approve' as const };
+      if (vote === 'oppose') return { label: t('vote.oppose'), tone: 'oppose' as const };
+      if (vote === 'abstain') return { label: t('vote.abstain'), tone: 'abstain' as const };
+      if (vote === 'skip') return { label: t('vote.labelSkipRound'), tone: 'skip' as const };
+      if (country === currentRoundCountries[currentCountryIdx])
+        return { label: t('vote.labelCurrent'), tone: 'current' as const };
+      return { label: t('vote.labelPending'), tone: 'pending' as const };
     }
 
     if (firstRoundVotes[country] === 'skip') {
       const second = secondRoundVotes[country];
-      if (second === 'approve') return { label: '赞成(二轮)', tone: 'approve' as const };
-      if (second === 'oppose') return { label: '反对(二轮)', tone: 'oppose' as const };
-      if (country === currentRoundCountries[currentCountryIdx]) return { label: '当前待投(二轮)', tone: 'current' as const };
-      return { label: '待投票(二轮)', tone: 'pending' as const };
+      if (second === 'approve') return { label: t('vote.labelApproveR2'), tone: 'approve' as const };
+      if (second === 'oppose') return { label: t('vote.labelOpposeR2'), tone: 'oppose' as const };
+      if (country === currentRoundCountries[currentCountryIdx])
+        return { label: t('vote.labelCurrentR2'), tone: 'current' as const };
+      return { label: t('vote.labelPendingR2'), tone: 'pending' as const };
     }
 
     const first = firstRoundVotes[country];
-    if (first === 'approve') return { label: '赞成', tone: 'approve' as const };
-    if (first === 'oppose') return { label: '反对', tone: 'oppose' as const };
-    if (first === 'abstain') return { label: '弃权', tone: 'abstain' as const };
-    return { label: '待投票', tone: 'pending' as const };
+    if (first === 'approve') return { label: t('vote.approve'), tone: 'approve' as const };
+    if (first === 'oppose') return { label: t('vote.oppose'), tone: 'oppose' as const };
+    if (first === 'abstain') return { label: t('vote.abstain'), tone: 'abstain' as const };
+    return { label: t('vote.labelPending'), tone: 'pending' as const };
   };
 
   const renderSetup = () => (
@@ -432,53 +443,53 @@ export function VotingPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Vote className="w-5 h-5 text-slate-700" />
-            发起投票
+            {t('vote.startTitle')}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">投票主题</label>
+            <label className="text-sm font-medium text-slate-700">{t('vote.topicLabel')}</label>
             <Input 
               value={topic}
               onChange={e => setTopic(e.target.value)}
-              placeholder="例如：关于气候变化的决议案"
+              placeholder={t('vote.topicPh')}
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">投票规则</label>
+            <label className="text-sm font-medium text-slate-700">{t('vote.ruleLabel')}</label>
             <select 
               className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
               value={rule}
               onChange={e => setRule(e.target.value as RuleType)}
             >
-              <option value="absolute">绝对多数 (2/3赞成，且弃权不过半)</option>
-              <option value="simple">简单多数 (赞成&gt;反对)</option>
-              <option value="custom">自定义规则（可视化配置）</option>
+              <option value="absolute">{t('vote.ruleAbsolute')}</option>
+              <option value="simple">{t('vote.ruleSimple')}</option>
+              <option value="custom">{t('vote.ruleCustom')}</option>
             </select>
           </div>
           {rule === 'custom' && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
-              <h4 className="text-sm font-semibold text-slate-800">自定义规则配置</h4>
+              <h4 className="text-sm font-semibold text-slate-800">{t('vote.customTitle')}</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-slate-600">通过比例</label>
+                  <label className="text-xs font-medium text-slate-600">{t('vote.passRatio')}</label>
                   <Input
                     value={customRule.passRatio}
-                    placeholder="例如 2/3"
+                    placeholder={t('vote.passRatioPh')}
                     onChange={(e) => setCustomRule((prev) => ({ ...prev, passRatio: e.target.value }))}
                   />
-                  <p className="text-[11px] text-slate-500">支持手动输入分数格式，如 1/2、2/3、3/5。</p>
+                  <p className="text-[11px] text-slate-500">{t('vote.passRatioHint')}</p>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-slate-600">比例基数</label>
+                  <label className="text-xs font-medium text-slate-600">{t('vote.ratioBase')}</label>
                   <select
                     className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
                     value={customRule.passRatioBase}
                     onChange={(e) => setCustomRule((prev) => ({ ...prev, passRatioBase: e.target.value as RatioBaseType }))}
                   >
-                    <option value="total">参与投票总数</option>
-                    <option value="casted">已投票总数（含弃权）</option>
-                    <option value="decisive">有效票（赞成+反对）</option>
+                    <option value="total">{t('vote.baseTotal')}</option>
+                    <option value="casted">{t('vote.baseCasted')}</option>
+                    <option value="decisive">{t('vote.baseDecisive')}</option>
                   </select>
                 </div>
               </div>
@@ -489,7 +500,7 @@ export function VotingPage() {
                     checked={customRule.passRatioRoundUp}
                     onChange={(e) => setCustomRule((prev) => ({ ...prev, passRatioRoundUp: e.target.checked }))}
                   />
-                  通过门槛向上取整
+                  {t('vote.roundUp')}
                 </label>
                 <label className="flex items-center gap-2 text-sm text-slate-700">
                   <input
@@ -497,7 +508,7 @@ export function VotingPage() {
                     checked={customRule.requireApproveGreaterThanOppose}
                     onChange={(e) => setCustomRule((prev) => ({ ...prev, requireApproveGreaterThanOppose: e.target.checked }))}
                   />
-                  平票不通过
+                  {t('vote.tieFail')}
                 </label>
                 <label className="flex items-center gap-2 text-sm text-slate-700">
                   <input
@@ -505,7 +516,7 @@ export function VotingPage() {
                     checked={customRule.allowSkipInFirstRound}
                     onChange={(e) => setCustomRule((prev) => ({ ...prev, allowSkipInFirstRound: e.target.checked }))}
                   />
-                  允许第一轮跳过
+                  {t('vote.allowSkip')}
                 </label>
                 <label className="flex items-center gap-2 text-sm text-slate-700">
                   <input
@@ -513,7 +524,7 @@ export function VotingPage() {
                     checked={customRule.enableVeto}
                     onChange={(e) => setCustomRule((prev) => ({ ...prev, enableVeto: e.target.checked }))}
                   />
-                  启用一票否决
+                  {t('vote.enableVeto')}
                 </label>
               </div>
               <div className="space-y-2">
@@ -523,12 +534,12 @@ export function VotingPage() {
                     checked={customRule.abstainLimitEnabled}
                     onChange={(e) => setCustomRule((prev) => ({ ...prev, abstainLimitEnabled: e.target.checked }))}
                   />
-                  限制弃权上限
+                  {t('vote.abstainLimit')}
                 </label>
                 {customRule.abstainLimitEnabled && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <label className="text-xs font-medium text-slate-600">弃权上限比例（按参与投票总数）</label>
+                      <label className="text-xs font-medium text-slate-600">{t('vote.abstainLimitLabel')}</label>
                       <select
                         className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
                         value={customRule.abstainLimitRatio}
@@ -546,24 +557,24 @@ export function VotingPage() {
           )}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-slate-700">国家权限设置</label>
+              <label className="text-sm font-medium text-slate-700">{t('vote.rightsLabel')}</label>
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
                 onClick={() => setShowRightsConfig(prev => !prev)}
               >
-                {showRightsConfig ? '收起' : '展开'}
+                {showRightsConfig ? t('common.collapse') : t('common.expand')}
               </Button>
             </div>
             <div className="text-xs text-slate-500">
-              出席 {presentCountries.length} / 参与投票 {votingCountries.length}
+              {t('vote.attendanceSummary', { p: presentCountries.length, v: votingCountries.length })}
             </div>
             {showRightsConfig && (
               <>
                 <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2 custom-scrollbar">
                   {presentCountries.length === 0 ? (
-                    <div className="text-sm text-slate-500 text-center py-4">暂无出席国家，请先完成点名</div>
+                    <div className="text-sm text-slate-500 text-center py-4">{t('vote.noPresent')}</div>
                   ) : (
                     presentCountries.map((country) => {
                       const rights = countryRights[country] || { veto: false, observer: false };
@@ -578,9 +589,11 @@ export function VotingPage() {
                           )}
                         >
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-slate-800">{country}</span>
+                            <span className="text-sm font-medium text-slate-800">{displayCountry(country)}</span>
                             {rights.observer && (
-                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 font-semibold">观察员</span>
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 font-semibold">
+                                {t('vote.observerBadge')}
+                              </span>
                             )}
                           </div>
                           <div className="flex items-center gap-2">
@@ -591,7 +604,7 @@ export function VotingPage() {
                               onClick={() => handleToggleVeto(country)}
                               disabled={rights.observer}
                             >
-                              一票否决权
+                              {t('vote.vetoBtn')}
                             </Button>
                             <Button
                               type="button"
@@ -599,7 +612,7 @@ export function VotingPage() {
                               variant={rights.observer ? 'danger' : 'outline'}
                               onClick={() => handleToggleObserver(country)}
                             >
-                              观察员国
+                              {t('vote.observerBtn')}
                             </Button>
                           </div>
                         </div>
@@ -608,23 +621,23 @@ export function VotingPage() {
                   )}
                 </div>
                 <p className="text-xs text-slate-500">
-                  规则说明：拥有一票否决权的国家只要投反对票，投票即不通过；观察员国不参与投票。
+                  {t('vote.rightsHint')}
                 </p>
               </>
             )}
           </div>
           <Button className="w-full" size="lg" onClick={handleStartVoting}>
-            开始投票
+            {t('vote.startBtn')}
           </Button>
           {showRollCallChoice && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
-              <p className="text-sm font-medium text-slate-700">发起投票前，是否重新点名？</p>
+              <p className="text-sm font-medium text-slate-700">{t('vote.rollCallAsk')}</p>
               <div className="flex flex-col sm:flex-row gap-2">
                 <Button type="button" variant="outline" className="flex-1" onClick={handleStartVotingWithRollCall}>
-                  先重新点名
+                  {t('vote.rollCallFirst')}
                 </Button>
                 <Button type="button" className="flex-1" onClick={handleStartVotingWithoutRollCall}>
-                  直接开始投票
+                  {t('vote.startDirect')}
                 </Button>
               </div>
             </div>
@@ -643,10 +656,10 @@ export function VotingPage() {
         <div className="apple-panel text-center space-y-2 p-6">
           <h2 className="text-2xl font-bold text-slate-900">{topic}</h2>
           <p className="text-sm font-medium text-slate-600">
-            {currentRound === 1 ? '第一轮投票' : '第二轮投票（仅首轮跳过国家）'}
+            {currentRound === 1 ? t('vote.round1') : t('vote.round2')}
           </p>
           <p className="text-slate-500">
-            进度: {currentCountryIdx + 1} / {currentRoundCountries.length}
+            {t('vote.progress')} {currentCountryIdx + 1} / {currentRoundCountries.length}
           </p>
         </div>
 
@@ -654,10 +667,14 @@ export function VotingPage() {
           <CardContent className="p-6 md:p-8">
             <div className="text-center space-y-8">
               <div>
-                <div className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">当前投票国</div>
+                <div className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">{t('vote.currentCountry')}</div>
                 <div className="text-4xl font-bold text-slate-900 flex items-center justify-center gap-3">
-                  {currentCountry}
-                  {isVeto && <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full font-semibold">一票否决权</span>}
+                  {currentCountry ? displayCountry(currentCountry) : ''}
+                  {isVeto && (
+                    <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full font-semibold">
+                      {t('vote.vetoTag')}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -671,27 +688,27 @@ export function VotingPage() {
                   )}
                 >
                   <Button size="lg" className="h-20 text-lg rounded-2xl bg-emerald-600 hover:bg-emerald-700" onClick={() => castVote('approve')}>
-                    <CheckCircle2 className="w-6 h-6 mr-2" /> 赞成
+                    <CheckCircle2 className="w-6 h-6 mr-2" /> {t('vote.approve')}
                   </Button>
                   <Button size="lg" className="h-20 text-lg rounded-2xl bg-brand-600 hover:bg-brand-700" onClick={() => castVote('oppose')}>
-                    <XCircle className="w-6 h-6 mr-2" /> 反对
+                    <XCircle className="w-6 h-6 mr-2" /> {t('vote.oppose')}
                   </Button>
                   <Button size="lg" className="h-20 text-lg rounded-2xl bg-amber-500 hover:bg-amber-600" onClick={() => castVote('abstain')}>
-                    <MinusCircle className="w-6 h-6 mr-2" /> 弃权
+                    <MinusCircle className="w-6 h-6 mr-2" /> {t('vote.abstain')}
                   </Button>
                   {(rule !== 'custom' || customRule.allowSkipInFirstRound) && (
                     <Button size="lg" className="h-20 text-lg rounded-2xl bg-slate-400 hover:bg-slate-500" onClick={() => castVote('skip')}>
-                      <ArrowRightCircle className="w-6 h-6 mr-2" /> 跳过
+                      <ArrowRightCircle className="w-6 h-6 mr-2" /> {t('vote.skip')}
                     </Button>
                   )}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-8">
                   <Button size="lg" className="h-20 text-lg rounded-2xl bg-emerald-600 hover:bg-emerald-700" onClick={() => castVote('approve')}>
-                    <CheckCircle2 className="w-6 h-6 mr-2" /> 赞成
+                    <CheckCircle2 className="w-6 h-6 mr-2" /> {t('vote.approve')}
                   </Button>
                   <Button size="lg" className="h-20 text-lg rounded-2xl bg-brand-600 hover:bg-brand-700" onClick={() => castVote('oppose')}>
-                    <XCircle className="w-6 h-6 mr-2" /> 反对
+                    <XCircle className="w-6 h-6 mr-2" /> {t('vote.oppose')}
                   </Button>
                 </div>
               )}
@@ -699,7 +716,7 @@ export function VotingPage() {
 
             <div className="mt-8 border-t border-slate-100 pt-5">
               <div className="mb-3 flex items-center justify-between">
-                <CardTitle>投票情况总览</CardTitle>
+                <CardTitle>{t('vote.overview')}</CardTitle>
               </div>
               <div ref={overviewScrollRef} className="max-h-[34vh] overflow-y-auto pr-2 custom-scrollbar">
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -720,7 +737,7 @@ export function VotingPage() {
                           status.tone === 'pending' && "bg-white border-slate-200"
                         )}
                       >
-                        <div className="text-sm font-medium text-slate-800 line-clamp-2">{country}</div>
+                        <div className="text-sm font-medium text-slate-800 line-clamp-2">{displayCountry(country)}</div>
                         <div className={cn(
                           "mt-2 text-xs font-semibold",
                           status.tone === 'approve' && "text-emerald-700",
@@ -749,14 +766,14 @@ export function VotingPage() {
     const res = results;
     const vetoApplied = rule === 'custom' ? customRule.enableVeto && res.hasVeto : res.hasVeto;
     const pieData = [
-      { name: '赞成', value: res.approve, color: '#059669' },
-      { name: '反对', value: res.oppose, color: '#e11d48' },
-      { name: '弃权', value: res.abstain, color: '#f59e0b' },
+      { name: t('vote.approve'), value: res.approve, color: '#059669' },
+      { name: t('vote.oppose'), value: res.oppose, color: '#e11d48' },
+      { name: t('vote.abstain'), value: res.abstain, color: '#f59e0b' },
     ].filter((d) => d.value > 0);
     const barData = [
-      { name: '赞成', value: res.approve },
-      { name: '反对', value: res.oppose },
-      { name: '弃权', value: res.abstain },
+      { name: t('vote.approve'), value: res.approve },
+      { name: t('vote.oppose'), value: res.oppose },
+      { name: t('vote.abstain'), value: res.abstain },
     ];
 
     return (
@@ -770,19 +787,21 @@ export function VotingPage() {
                   "mt-2 text-4xl md:text-5xl font-semibold tracking-tight",
                   res.passed ? "text-emerald-700" : "text-brand-700"
                 )}>
-                  {res.passed ? '投票通过' : '投票未通过'}
+                  {res.passed ? t('vote.passed') : t('vote.failed')}
                 </h2>
                 <p className="mt-2 text-sm text-slate-600">
-                  {vetoApplied ? '投票被一票否决' : res.passed ? '投票已获得足够支持' : '投票未获得足够支持'}
+                  {vetoApplied ? t('vote.vetoed') : res.passed ? t('vote.passedDetail') : t('vote.failedDetail')}
                 </p>
                 <p className="mt-2 text-xs text-slate-500 max-w-2xl">
                   {getRuleDescription(res)}
                 </p>
               </div>
               <div className="text-sm text-slate-600 leading-7">
-                <p>{meetingInfo.committee || '未设置委员会'}</p>
+                <p>{displayCountry(meetingInfo.committee) || t('common.committeeUnset')}</p>
                 <p>{topic}</p>
-                <p>赞成 {res.approve} · 反对 {res.oppose} · 弃权 {res.abstain} · 总计 {res.total}</p>
+                <p>
+                  {t('vote.countSummary', { a: res.approve, o: res.oppose, ab: res.abstain, t: res.total })}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -794,7 +813,7 @@ export function VotingPage() {
 
         <Card className="apple-panel border-0 stage-entrance-delay">
           <CardHeader>
-            <CardTitle className="text-base">最终国家投票情况</CardTitle>
+            <CardTitle className="text-base">{t('vote.finalBreakdown')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -802,14 +821,14 @@ export function VotingPage() {
                 const isObserver = !!countryRights[country]?.observer;
                 const vote = res.finalVotes[country];
                 const label = isObserver
-                  ? '观察员'
+                  ? t('vote.observerBadge')
                   : vote === 'approve'
-                    ? '赞成'
+                    ? t('vote.approve')
                     : vote === 'oppose'
-                      ? '反对'
+                      ? t('vote.oppose')
                       : vote === 'abstain'
-                        ? '弃权'
-                        : '未投票';
+                        ? t('vote.abstain')
+                        : t('vote.notVoted');
                 return (
                   <div
                     key={country}
@@ -818,7 +837,7 @@ export function VotingPage() {
                       isObserver ? "bg-brand-50 border-brand-200" : "bg-slate-50 border-slate-200"
                     )}
                   >
-                    <div className="text-sm font-medium text-slate-800 line-clamp-2">{country}</div>
+                    <div className="text-sm font-medium text-slate-800 line-clamp-2">{displayCountry(country)}</div>
                     <div className={cn(
                       "mt-1 text-xs font-semibold",
                       isObserver && "text-brand-700",
@@ -838,10 +857,10 @@ export function VotingPage() {
 
         <div className="flex flex-wrap justify-center gap-3">
           <Button onClick={() => setPhase('setup')} variant="secondary">
-            重新发起投票
+            {t('vote.restart')}
           </Button>
           <Button onClick={() => setCurrentPage('meeting')} variant="secondary">
-            返回会议
+            {t('vote.backMeeting')}
           </Button>
         </div>
       </div>

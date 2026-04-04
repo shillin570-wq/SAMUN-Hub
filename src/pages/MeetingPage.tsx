@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useMeeting } from '../context/MeetingContext';
+import { useLanguage } from '../context/LanguageContext';
 import { Play, Pause, RotateCcw, SkipForward, UserRoundPlus, Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { pinyin } from 'pinyin-pro';
@@ -43,6 +44,98 @@ interface PersistedMeetingPageState {
 }
 
 type DiscussionMode = 'agenda' | 'consultation' | 'debate' | 'file' | 'moderated-caucus' | 'main-speaker-list';
+
+/** 自由磋商 / 自由辩论：仅总时长倒计时，无单位发言时长 */
+const isConsultationOrDebateTotalOnly = (mode: DiscussionMode) =>
+  mode === 'consultation' || mode === 'debate';
+
+type TimerTheme = {
+  chipActive: string;
+  chipInactive: string;
+  panelWrap: string;
+  panelInner: string;
+  digits: string;
+  digitsZero: string;
+  status: string;
+  playGo: string;
+  pause: string;
+  ctrl: string;
+};
+
+const TIMER_MODE_THEME: Record<DiscussionMode, TimerTheme> = {
+  agenda: {
+    chipActive: 'bg-slate-900 text-white shadow-sm',
+    chipInactive: 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100',
+    panelWrap: 'border-slate-100/80',
+    panelInner: 'bg-slate-50/70',
+    digits: 'text-slate-900',
+    digitsZero: 'text-red-500',
+    status: 'text-slate-500',
+    playGo: 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200',
+    pause: 'bg-amber-100 text-amber-600 hover:bg-amber-200',
+    ctrl: 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+  },
+  consultation: {
+    chipActive: 'bg-amber-600 text-white shadow-sm',
+    chipInactive: 'bg-white text-slate-600 border border-slate-200 hover:bg-amber-50 hover:border-amber-200',
+    panelWrap: 'border-amber-100/90',
+    panelInner: 'bg-amber-50/50',
+    digits: 'text-amber-950',
+    digitsZero: 'text-red-500',
+    status: 'text-amber-900',
+    playGo: 'bg-amber-100 text-amber-800 hover:bg-amber-200',
+    pause: 'bg-yellow-100 text-yellow-900 hover:bg-yellow-200',
+    ctrl: 'bg-amber-100/80 text-amber-950 hover:bg-amber-200',
+  },
+  debate: {
+    chipActive: 'bg-rose-600 text-white shadow-sm',
+    chipInactive: 'bg-white text-slate-600 border border-slate-200 hover:bg-rose-50 hover:border-rose-200',
+    panelWrap: 'border-rose-100/90',
+    panelInner: 'bg-rose-50/50',
+    digits: 'text-rose-950',
+    digitsZero: 'text-red-600',
+    status: 'text-rose-800',
+    playGo: 'bg-rose-100 text-rose-700 hover:bg-rose-200',
+    pause: 'bg-orange-100 text-orange-800 hover:bg-orange-200',
+    ctrl: 'bg-rose-100/80 text-rose-900 hover:bg-rose-200',
+  },
+  file: {
+    chipActive: 'bg-violet-600 text-white shadow-sm',
+    chipInactive: 'bg-white text-slate-600 border border-slate-200 hover:bg-violet-50 hover:border-violet-200',
+    panelWrap: 'border-violet-100/90',
+    panelInner: 'bg-violet-50/50',
+    digits: 'text-violet-950',
+    digitsZero: 'text-red-500',
+    status: 'text-violet-800',
+    playGo: 'bg-violet-100 text-violet-700 hover:bg-violet-200',
+    pause: 'bg-fuchsia-100 text-fuchsia-800 hover:bg-fuchsia-200',
+    ctrl: 'bg-violet-100/80 text-violet-900 hover:bg-violet-200',
+  },
+  'moderated-caucus': {
+    chipActive: 'bg-sky-600 text-white shadow-sm',
+    chipInactive: 'bg-white text-slate-600 border border-slate-200 hover:bg-sky-50 hover:border-sky-200',
+    panelWrap: 'border-sky-100/90',
+    panelInner: 'bg-sky-50/50',
+    digits: 'text-sky-950',
+    digitsZero: 'text-red-500',
+    status: 'text-sky-700',
+    playGo: 'bg-sky-100 text-sky-700 hover:bg-sky-200',
+    pause: 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200',
+    ctrl: 'bg-sky-100/80 text-sky-800 hover:bg-sky-200',
+  },
+  'main-speaker-list': {
+    chipActive: 'bg-emerald-700 text-white shadow-sm',
+    chipInactive: 'bg-white text-slate-600 border border-slate-200 hover:bg-emerald-50 hover:border-emerald-200',
+    panelWrap: 'border-emerald-100/90',
+    panelInner: 'bg-emerald-50/50',
+    digits: 'text-emerald-950',
+    digitsZero: 'text-red-500',
+    status: 'text-emerald-900',
+    playGo: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200',
+    pause: 'bg-teal-100 text-teal-800 hover:bg-teal-200',
+    ctrl: 'bg-emerald-100/80 text-emerald-900 hover:bg-emerald-200',
+  },
+};
 
 interface TimerSectionState {
   timeLeft: number;
@@ -88,31 +181,70 @@ const getSectionKey = (mode: DiscussionMode, agendaId: string) => {
   return mode;
 };
 
-const getDefaultShowTotalTimer = (mode: DiscussionMode) => mode === 'moderated-caucus';
+const getDefaultShowTotalTimer = (mode: DiscussionMode) =>
+  mode === 'moderated-caucus' || mode === 'consultation' || mode === 'debate';
 
-const createDefaultTimerSectionState = (showTotalTimer: boolean): TimerSectionState => ({
-  timeLeft: 120,
-  totalElapsed: 0,
-  totalDurationInput: '',
-  totalCountdownSeconds: null,
-  showTotalTimer,
-  customTime: '120',
-  isRunning: false,
-});
+const CONSULTATION_DEFAULT_TOTAL_SEC = 30 * 60;
+const DEBATE_DEFAULT_TOTAL_SEC = 10 * 60;
+
+const sectionStorageKeyToMode = (key: string): DiscussionMode =>
+  key.startsWith('agenda:') ? 'agenda' : (key as DiscussionMode);
+
+const createDefaultTimerSectionState = (mode: DiscussionMode): TimerSectionState => {
+  const showTotalTimer = getDefaultShowTotalTimer(mode);
+  if (mode === 'consultation') {
+    const sec = CONSULTATION_DEFAULT_TOTAL_SEC;
+    return {
+      timeLeft: sec,
+      totalElapsed: 0,
+      totalDurationInput: String(sec),
+      totalCountdownSeconds: sec,
+      showTotalTimer: true,
+      customTime: '120',
+      isRunning: false,
+    };
+  }
+  if (mode === 'debate') {
+    const sec = DEBATE_DEFAULT_TOTAL_SEC;
+    return {
+      timeLeft: sec,
+      totalElapsed: 0,
+      totalDurationInput: String(sec),
+      totalCountdownSeconds: sec,
+      showTotalTimer: true,
+      customTime: '120',
+      isRunning: false,
+    };
+  }
+  return {
+    timeLeft: 120,
+    totalElapsed: 0,
+    totalDurationInput: '',
+    totalCountdownSeconds: null,
+    showTotalTimer,
+    customTime: '120',
+    isRunning: false,
+  };
+};
 
 const sanitizeTimerSectionState = (
   source: Partial<TimerSectionState> | undefined,
-  fallbackShowTotalTimer: boolean
+  fallbackShowTotalTimer: boolean,
+  sectionKey?: string
 ): TimerSectionState => {
-  const timeLeft = typeof source?.timeLeft === 'number' && source.timeLeft >= 0 ? source.timeLeft : 120;
-  const totalElapsed = typeof source?.totalElapsed === 'number' && source.totalElapsed >= 0 ? source.totalElapsed : 0;
-  const totalDurationInput = typeof source?.totalDurationInput === 'string' ? source.totalDurationInput : '';
+  const mode = sectionKey ? sectionStorageKeyToMode(sectionKey) : 'agenda';
+  const defaults = createDefaultTimerSectionState(mode);
+  const timeLeft = typeof source?.timeLeft === 'number' && source.timeLeft >= 0 ? source.timeLeft : defaults.timeLeft;
+  const totalElapsed =
+    typeof source?.totalElapsed === 'number' && source.totalElapsed >= 0 ? source.totalElapsed : defaults.totalElapsed;
+  const totalDurationInput =
+    typeof source?.totalDurationInput === 'string' ? source.totalDurationInput : defaults.totalDurationInput;
   const totalCountdownSeconds =
     typeof source?.totalCountdownSeconds === 'number' && source.totalCountdownSeconds >= 0
       ? source.totalCountdownSeconds
-      : null;
+      : defaults.totalCountdownSeconds;
   const showTotalTimer = typeof source?.showTotalTimer === 'boolean' ? source.showTotalTimer : fallbackShowTotalTimer;
-  const customTime = typeof source?.customTime === 'string' ? source.customTime : '120';
+  const customTime = typeof source?.customTime === 'string' ? source.customTime : defaults.customTime;
   return {
     timeLeft,
     totalElapsed,
@@ -126,6 +258,7 @@ const sanitizeTimerSectionState = (
 
 export function MeetingPage() {
   const { meetingInfo, countries, attendance, agendaItems, addMeetingLog } = useMeeting();
+  const { t, displayCountry } = useLanguage();
   const [speakerListsBySection, setSpeakerListsBySection] = useState<Record<string, string[]>>({});
   const [timerStatesBySection, setTimerStatesBySection] = useState<Record<string, TimerSectionState>>({});
   const [loggedSpeakerBySection, setLoggedSpeakerBySection] = useState<Record<string, string>>({});
@@ -164,11 +297,14 @@ export function MeetingPage() {
   const currentTimerState = useMemo(
     () =>
       timerStatesBySection[currentSectionKey] ??
-      createDefaultTimerSectionState(getDefaultShowTotalTimer(discussionMode)),
+      createDefaultTimerSectionState(discussionMode),
     [timerStatesBySection, currentSectionKey, discussionMode]
   );
   const { timeLeft, totalElapsed, totalDurationInput, totalCountdownSeconds, showTotalTimer, customTime, isRunning } =
     currentTimerState;
+  const timerTheme = TIMER_MODE_THEME[discussionMode];
+  const totalOnlyMode = isConsultationOrDebateTotalOnly(discussionMode);
+  const displayMainSeconds = totalOnlyMode ? (totalCountdownSeconds ?? 0) : timeLeft;
   const currentSpeaker = useMemo(() => speakers[0], [speakers]);
   const speakerSet = useMemo(() => new Set(speakers), [speakers]);
   const collapsedAgendaGroupIdSet = useMemo(() => new Set(collapsedAgendaGroupIds), [collapsedAgendaGroupIds]);
@@ -219,21 +355,26 @@ export function MeetingPage() {
       .filter((row) => !row.isHiddenByParent);
   }, [agendaItems, collapsedAgendaGroupIdSet]);
   const getAgendaStatusText = (status: 'normal' | 'postponed' | 'ended') => {
-    if (status === 'postponed') return '延置';
-    if (status === 'ended') return '结束';
-    return '正常';
+    if (status === 'postponed') return t('meeting.agendaStatusPostponed');
+    if (status === 'ended') return t('meeting.agendaStatusEnded');
+    return t('meeting.agendaStatusNormal');
   };
   const currentDiscussion = useMemo(() => {
-    if (discussionMode === 'consultation') return '自由磋商';
-    if (discussionMode === 'debate') return '自由辩论';
-    if (discussionMode === 'file') return discussionFileName.trim() ? `主题 - ${discussionFileName.trim()}` : '主题 - 未填写主题名';
+    if (discussionMode === 'consultation') return t('meeting.modeConsult');
+    if (discussionMode === 'debate') return t('meeting.modeDebate');
+    if (discussionMode === 'file')
+      return discussionFileName.trim()
+        ? `${t('meeting.discussFilePrefix')}${discussionFileName.trim()}`
+        : `${t('meeting.discussFilePrefix')}${t('meeting.discussFileEmpty')}`;
     if (discussionMode === 'moderated-caucus') {
-      return moderatedCaucusTopic.trim() ? `有主持核心磋商 - ${moderatedCaucusTopic.trim()}` : '有主持核心磋商 - 未填写主题';
+      return moderatedCaucusTopic.trim()
+        ? `${t('meeting.modCaucusPrefix')}${moderatedCaucusTopic.trim()}`
+        : `${t('meeting.modCaucusPrefix')}${t('meeting.modCaucusEmpty')}`;
     }
-    if (discussionMode === 'main-speaker-list') return '主发言名单';
-    if (!selectedAgenda) return '未选择议程项';
+    if (discussionMode === 'main-speaker-list') return t('meeting.modeMainList');
+    if (!selectedAgenda) return t('meeting.noAgendaPick');
     return `${agendaNumberMap[selectedAgenda.id] || ''} ${sanitizeAgendaTitle(selectedAgenda.title)}`.trim();
-  }, [discussionMode, selectedAgenda, discussionFileName, moderatedCaucusTopic, agendaNumberMap]);
+  }, [discussionMode, selectedAgenda, discussionFileName, moderatedCaucusTopic, agendaNumberMap, t]);
   const mainSpeakerCapacity = useMemo(() => {
     const unitSeconds = parseInt(customTime, 10);
     const safeUnitSeconds = Number.isNaN(unitSeconds) || unitSeconds <= 0 ? 120 : unitSeconds;
@@ -267,13 +408,27 @@ export function MeetingPage() {
   const updateCurrentTimerState = (updater: (prev: TimerSectionState) => TimerSectionState) => {
     setTimerStatesBySection((prev) => {
       const base =
-        prev[currentSectionKey] ?? createDefaultTimerSectionState(getDefaultShowTotalTimer(discussionMode));
+        prev[currentSectionKey] ?? createDefaultTimerSectionState(discussionMode);
       return {
         ...prev,
         [currentSectionKey]: updater(base),
       };
     });
   };
+
+  /** 旧版持久化可能在磋商/辩论下关掉总时长；仅总时长模式下必须始终为 true */
+  useEffect(() => {
+    if (!isConsultationOrDebateTotalOnly(discussionMode)) return;
+    setTimerStatesBySection((prev) => {
+      const base =
+        prev[currentSectionKey] ?? createDefaultTimerSectionState(discussionMode);
+      if (base.showTotalTimer) return prev;
+      return {
+        ...prev,
+        [currentSectionKey]: { ...base, showTotalTimer: true },
+      };
+    });
+  }, [discussionMode, currentSectionKey]);
 
   useEffect(() => {
     if (!isSpeakerSearchOpen || speakerSuggestions.length === 0) {
@@ -287,11 +442,39 @@ export function MeetingPage() {
   }, [isSpeakerSearchOpen, speakerSuggestions]);
 
   useEffect(() => {
-    if (!isRunning || timeLeft <= 0) return;
+    if (!isRunning) return;
+
+    if (isConsultationOrDebateTotalOnly(discussionMode)) {
+      if (totalCountdownSeconds === null || totalCountdownSeconds <= 0) return;
+      const timer = window.setInterval(() => {
+        setTimerStatesBySection((prev) => {
+          const base =
+            prev[currentSectionKey] ?? createDefaultTimerSectionState(discussionMode);
+          if (!base.isRunning || base.totalCountdownSeconds === null || base.totalCountdownSeconds <= 0) {
+            return prev;
+          }
+          const nextTotal = Math.max(base.totalCountdownSeconds - 1, 0);
+          const stillRunning = nextTotal > 0;
+          return {
+            ...prev,
+            [currentSectionKey]: {
+              ...base,
+              totalCountdownSeconds: nextTotal,
+              timeLeft: nextTotal,
+              totalElapsed: base.totalElapsed + 1,
+              isRunning: stillRunning,
+            },
+          };
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+
+    if (timeLeft <= 0) return;
     const timer = window.setInterval(() => {
       setTimerStatesBySection((prev) => {
         const base =
-          prev[currentSectionKey] ?? createDefaultTimerSectionState(getDefaultShowTotalTimer(discussionMode));
+          prev[currentSectionKey] ?? createDefaultTimerSectionState(discussionMode);
         if (!base.isRunning || base.timeLeft <= 0) return prev;
         const nextTimeLeft = Math.max(base.timeLeft - 1, 0);
         const nextState: TimerSectionState = {
@@ -313,7 +496,7 @@ export function MeetingPage() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [isRunning, timeLeft, currentSectionKey, discussionMode]);
+  }, [isRunning, timeLeft, totalCountdownSeconds, currentSectionKey, discussionMode]);
 
   useEffect(() => {
     const rawState = localStorage.getItem(MEETING_PAGE_STATE_KEY);
@@ -344,8 +527,9 @@ export function MeetingPage() {
       if (parsed.timerStatesBySection && typeof parsed.timerStatesBySection === 'object') {
         const nextTimerStates = Object.entries(parsed.timerStatesBySection).reduce<Record<string, TimerSectionState>>(
           (acc, [key, value]) => {
-            const fallbackShowTotalTimer = key === 'moderated-caucus';
-            acc[key] = sanitizeTimerSectionState(value, fallbackShowTotalTimer);
+            const fallbackShowTotalTimer =
+              key === 'moderated-caucus' || key === 'consultation' || key === 'debate';
+            acc[key] = sanitizeTimerSectionState(value, fallbackShowTotalTimer, key);
             return acc;
           },
           {}
@@ -361,7 +545,8 @@ export function MeetingPage() {
             showTotalTimer: parsed.showTotalTimer,
             customTime: parsed.customTime,
           },
-          getDefaultShowTotalTimer(restoredDiscussionMode)
+          getDefaultShowTotalTimer(restoredDiscussionMode),
+          legacySectionKey
         );
         setTimerStatesBySection({
           [legacySectionKey]: legacyTimerState,
@@ -454,20 +639,23 @@ export function MeetingPage() {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  const formatMainClock = (seconds: number) =>
+    seconds >= 3600 ? formatLongTime(seconds) : formatTime(seconds);
+
   const handleAddSpeaker = (inputValue?: string) => {
     const value = (inputValue ?? newSpeaker).trim();
     if (!value || speakerSet.has(value)) return;
     if (discussionMode === 'moderated-caucus') {
       if (mainSpeakerCapacity === null) {
-        alert('有主持核心磋商模式下，请先设置总时长。');
+        alert(t('meeting.alertNeedTotal'));
         return;
       }
       if (mainSpeakerCapacity <= 0) {
-        alert('总时长不足以容纳 1 位代表，请调整总时长或单位时长。');
+        alert(t('meeting.alertCapacityZero'));
         return;
       }
       if (speakers.length >= mainSpeakerCapacity) {
-        alert(`主发言名单上限为 ${mainSpeakerCapacity} 位，无法继续添加。`);
+        alert(t('meeting.alertCapacityMax', { n: mainSpeakerCapacity }));
         return;
       }
     }
@@ -534,11 +722,13 @@ export function MeetingPage() {
       delete next[currentSectionKey];
       return next;
     });
-    updateCurrentTimerState((prev) => ({
-      ...prev,
-      isRunning: false,
-      timeLeft: parseInt(prev.customTime, 10) || 120,
-    }));
+    if (!isConsultationOrDebateTotalOnly(discussionMode)) {
+      updateCurrentTimerState((prev) => ({
+        ...prev,
+        isRunning: false,
+        timeLeft: parseInt(prev.customTime, 10) || 120,
+      }));
+    }
   };
 
   const handleSetTime = () => {
@@ -596,13 +786,26 @@ export function MeetingPage() {
   };
 
   const handleToggleTimer = () => {
-    if (showTotalTimer && totalCountdownSeconds === 0) return;
+    if (totalOnlyMode) {
+      if (totalCountdownSeconds === null || totalCountdownSeconds <= 0) return;
+    } else if (showTotalTimer && totalCountdownSeconds === 0) {
+      return;
+    }
     if (isRunning) {
       if (discussionMode === 'consultation' || discussionMode === 'debate') {
         const startedAt = runStartTimeLeftBySection[currentSectionKey];
-        const elapsedSeconds = Math.max((typeof startedAt === 'number' ? startedAt : timeLeft) - timeLeft, 0);
-        const modeLabel = discussionMode === 'consultation' ? '自由磋商' : '自由辩论';
-        addMeetingLog('speech', `发言议题：${currentDiscussion}`, `${modeLabel} 总时长 ${formatTime(elapsedSeconds)}`);
+        const endTotal = totalCountdownSeconds ?? 0;
+        const elapsedSeconds =
+          typeof startedAt === 'number' ? Math.max(startedAt - endTotal, 0) : 0;
+        const modeLabel =
+          discussionMode === 'consultation' ? t('meeting.modeConsult') : t('meeting.modeDebate');
+        const elapsedLabel =
+          elapsedSeconds >= 3600 ? formatLongTime(elapsedSeconds) : formatTime(elapsedSeconds);
+        addMeetingLog(
+          'speech',
+          `${t('meeting.logSpeechTitlePrefix')}${currentDiscussion}`,
+          t('meeting.logTotalTime', { mode: modeLabel, time: elapsedLabel })
+        );
       }
       updateCurrentTimerState((prev) => ({
         ...prev,
@@ -625,11 +828,15 @@ export function MeetingPage() {
     if (discussionMode === 'consultation' || discussionMode === 'debate') {
       setRunStartTimeLeftBySection((prev) => ({
         ...prev,
-        [currentSectionKey]: timeLeft,
+        [currentSectionKey]: totalCountdownSeconds ?? 0,
       }));
     }
     if (currentSpeaker && loggedSpeakerBySection[currentSectionKey] !== currentSpeaker) {
-      addMeetingLog('speech', `发言议题：${currentDiscussion}`, `${currentSpeaker} 发言`);
+      addMeetingLog(
+        'speech',
+        `${t('meeting.logSpeechTitlePrefix')}${currentDiscussion}`,
+        `${currentSpeaker}${t('meeting.logSpokeSuffix')}`
+      );
       setLoggedSpeakerBySection((prev) => ({
         ...prev,
         [currentSectionKey]: currentSpeaker,
@@ -645,33 +852,49 @@ export function MeetingPage() {
     const previousTimeLeft = previousTimeLeftBySectionRef.current[currentSectionKey];
     const previousTotalCountdown = previousTotalCountdownBySectionRef.current[currentSectionKey];
 
-    const hasTimeLeftChanged = typeof previousTimeLeft === 'number' && previousTimeLeft !== timeLeft;
-    const isCountdownTick = hasTimeLeftChanged && previousTimeLeft > timeLeft;
-    const unitTimerReachedTenSeconds =
-      typeof previousTimeLeft === 'number' && previousTimeLeft > 10 && timeLeft === 10;
+    const mainDisplay = totalOnlyMode ? (totalCountdownSeconds ?? 0) : timeLeft;
+    const previousMain =
+      totalOnlyMode && typeof previousTotalCountdown === 'number'
+        ? previousTotalCountdown
+        : previousTimeLeft;
+
+    const hasMainChanged = typeof previousMain === 'number' && previousMain !== mainDisplay;
+    const isCountdownTick = hasMainChanged && previousMain > mainDisplay;
+    const mainReachedTenSeconds =
+      typeof previousMain === 'number' && previousMain > 10 && mainDisplay === 10;
     const totalTimerReachedTenSeconds =
+      !totalOnlyMode &&
       showTotalTimer &&
       typeof previousTotalCountdown === 'number' &&
       previousTotalCountdown > 10 &&
       totalCountdownSeconds === 10;
-    if (isRunning && isCountdownTick && (unitTimerReachedTenSeconds || totalTimerReachedTenSeconds)) {
+    if (isRunning && isCountdownTick && (mainReachedTenSeconds || totalTimerReachedTenSeconds)) {
       playCountdownBeep();
     }
 
-    const unitTimerEnded = typeof previousTimeLeft === 'number' && previousTimeLeft > 0 && timeLeft === 0;
+    const mainEnded = typeof previousMain === 'number' && previousMain > 0 && mainDisplay === 0;
     const totalTimerEnded =
+      !totalOnlyMode &&
       showTotalTimer &&
       typeof previousTotalCountdown === 'number' &&
       previousTotalCountdown > 0 &&
       totalCountdownSeconds === 0;
-    if (unitTimerEnded || totalTimerEnded) {
+    if (mainEnded || totalTimerEnded) {
       playTimeUpBeep();
     }
 
     previousTimeLeftBySectionRef.current[currentSectionKey] = timeLeft;
     previousTotalCountdownBySectionRef.current[currentSectionKey] =
       typeof totalCountdownSeconds === 'number' ? totalCountdownSeconds : null;
-  }, [currentSectionKey, isRunning, showTotalTimer, timeLeft, totalCountdownSeconds, isSoundEnabled]);
+  }, [
+    currentSectionKey,
+    isRunning,
+    showTotalTimer,
+    timeLeft,
+    totalCountdownSeconds,
+    isSoundEnabled,
+    totalOnlyMode,
+  ]);
 
   const toggleAgendaGroup = (levelOneId: string) => {
     setCollapsedAgendaGroupIds((prev) =>
@@ -687,25 +910,32 @@ export function MeetingPage() {
         <div className="relative flex flex-col md:flex-row md:items-end justify-between gap-2">
           <div className="space-y-1.5">
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-slate-900">
-              {meetingInfo.committee || '未设置委员会'}
+              {displayCountry(meetingInfo.committee) || t('common.committeeUnset')}
             </h1>
             <p className="text-lg text-slate-500 font-medium">
-              {meetingInfo.topic || '请在会议管理中补充会议议题'}
+              {meetingInfo.topic || t('common.topicUnsetLong')}
             </p>
             <p className="text-base text-slate-700 font-medium">
-              正在讨论：<span className="text-slate-900">{currentDiscussion}</span>
+              {t('meeting.discussing')}
+              <span className="text-slate-900">{currentDiscussion}</span>
             </p>
           </div>
           <div className="flex flex-wrap gap-1.5">
             <div className="bg-slate-50 px-4 py-2 rounded-2xl flex items-center gap-2.5 border border-slate-100/80 shadow-sm">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-sm font-semibold text-slate-600">出席 {presentCount}</span>
+              <span className="text-sm font-semibold text-slate-600">
+                {t('meeting.present')} {presentCount}
+              </span>
             </div>
             <div className="bg-slate-50 px-4 py-2 rounded-2xl flex items-center gap-2.5 border border-slate-100/80 shadow-sm">
-              <span className="text-sm font-semibold text-slate-600">绝对多数 {absoluteMajority}</span>
+              <span className="text-sm font-semibold text-slate-600">
+                {t('meeting.absMajority')} {absoluteMajority}
+              </span>
             </div>
             <div className="bg-slate-50 px-4 py-2 rounded-2xl flex items-center gap-2.5 border border-slate-100/80 shadow-sm">
-              <span className="text-sm font-semibold text-slate-600">简单多数 {simpleMajority}</span>
+              <span className="text-sm font-semibold text-slate-600">
+                {t('meeting.simpleMajority')} {simpleMajority}
+              </span>
             </div>
           </div>
         </div>
@@ -716,86 +946,89 @@ export function MeetingPage() {
           {/* 合并后的计时与发言区 */}
           <div className="lg:col-span-7 flex flex-col min-h-[420px]">
             <div className="mb-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 space-y-2">
-              <p className="text-sm font-semibold text-slate-700">当前讨论内容</p>
+              <p className="text-sm font-semibold text-slate-700">{t('meeting.currentTopic')}</p>
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setDiscussionMode('agenda')}
                   className={cn(
-                    "px-3 py-1.5 rounded-full text-xs font-semibold transition-colors",
+                    'px-3 py-1.5 rounded-full text-xs font-semibold transition-colors',
                     discussionMode === 'agenda'
-                      ? "bg-slate-900 text-white"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                      ? TIMER_MODE_THEME.agenda.chipActive
+                      : TIMER_MODE_THEME.agenda.chipInactive
                   )}
                 >
-                  议程单
+                  {t('meeting.modeAgenda')}
                 </button>
                 <button
                   onClick={() => setDiscussionMode('consultation')}
                   className={cn(
-                    "px-3 py-1.5 rounded-full text-xs font-semibold transition-colors",
+                    'px-3 py-1.5 rounded-full text-xs font-semibold transition-colors',
                     discussionMode === 'consultation'
-                      ? "bg-slate-900 text-white"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                      ? TIMER_MODE_THEME.consultation.chipActive
+                      : TIMER_MODE_THEME.consultation.chipInactive
                   )}
                 >
-                  自由磋商
+                  {t('meeting.modeConsult')}
                 </button>
                 <button
                   onClick={() => setDiscussionMode('debate')}
                   className={cn(
-                    "px-3 py-1.5 rounded-full text-xs font-semibold transition-colors",
+                    'px-3 py-1.5 rounded-full text-xs font-semibold transition-colors',
                     discussionMode === 'debate'
-                      ? "bg-slate-900 text-white"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                      ? TIMER_MODE_THEME.debate.chipActive
+                      : TIMER_MODE_THEME.debate.chipInactive
                   )}
                 >
-                  自由辩论
+                  {t('meeting.modeDebate')}
                 </button>
                 <button
                   onClick={() => setDiscussionMode('file')}
                   className={cn(
-                    "px-3 py-1.5 rounded-full text-xs font-semibold transition-colors",
+                    'px-3 py-1.5 rounded-full text-xs font-semibold transition-colors',
                     discussionMode === 'file'
-                      ? "bg-slate-900 text-white"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                      ? TIMER_MODE_THEME.file.chipActive
+                      : TIMER_MODE_THEME.file.chipInactive
                   )}
                 >
-                  主题
+                  {t('meeting.modeFile')}
                 </button>
                 <button
                   onClick={() => setDiscussionMode('moderated-caucus')}
                   className={cn(
-                    "px-3 py-1.5 rounded-full text-xs font-semibold transition-colors",
+                    'px-3 py-1.5 rounded-full text-xs font-semibold transition-colors',
                     discussionMode === 'moderated-caucus'
-                      ? "bg-slate-900 text-white"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                      ? TIMER_MODE_THEME['moderated-caucus'].chipActive
+                      : TIMER_MODE_THEME['moderated-caucus'].chipInactive
                   )}
                 >
-                  有主持核心磋商
+                  {t('meeting.modeModCaucus')}
                 </button>
                 <button
                   onClick={() => setDiscussionMode('main-speaker-list')}
                   className={cn(
-                    "px-3 py-1.5 rounded-full text-xs font-semibold transition-colors",
+                    'px-3 py-1.5 rounded-full text-xs font-semibold transition-colors',
                     discussionMode === 'main-speaker-list'
-                      ? "bg-slate-900 text-white"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                      ? TIMER_MODE_THEME['main-speaker-list'].chipActive
+                      : TIMER_MODE_THEME['main-speaker-list'].chipInactive
                   )}
                 >
-                  主发言名单
+                  {t('meeting.modeMainList')}
                 </button>
               </div>
               {discussionMode === 'agenda' && (
                 <div className="rounded-2xl border border-slate-200/80 bg-white p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-semibold tracking-wide text-slate-500">选择正在讨论的议程项</p>
+                    <p className="text-xs font-semibold tracking-wide text-slate-500">{t('meeting.pickAgenda')}</p>
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-slate-400">{agendaItems.length} 项</span>
+                      <span className="text-[11px] text-slate-400">
+                        {agendaItems.length}
+                        {t('meeting.agendaCount')}
+                      </span>
                       <button
                         type="button"
                         onClick={() => setIsAgendaSelectorCollapsed((prev) => !prev)}
                         className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-500 transition-colors hover:bg-slate-100"
-                        title={isAgendaSelectorCollapsed ? '展开议程列表' : '折叠议程列表'}
+                        title={isAgendaSelectorCollapsed ? t('meeting.expandAgenda') : t('meeting.collapseAgenda')}
                       >
                         <ChevronDown
                           className={cn(
@@ -809,11 +1042,14 @@ export function MeetingPage() {
 
                   {isAgendaSelectorCollapsed ? (
                     <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
-                      当前：{selectedAgenda ? `${agendaNumberMap[selectedAgenda.id] || ''} ${sanitizeAgendaTitle(selectedAgenda.title)}`.trim() : '未选择议程项'}
+                      {t('meeting.currentLabel')}
+                      {selectedAgenda
+                        ? `${agendaNumberMap[selectedAgenda.id] || ''} ${sanitizeAgendaTitle(selectedAgenda.title)}`.trim()
+                        : t('meeting.noAgendaPick')}
                     </p>
                   ) : agendaItems.length === 0 ? (
                     <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-400">
-                      暂无议程项，请先在议程编辑中添加
+                      {t('meeting.noAgendaHint')}
                     </p>
                   ) : (
                     <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1 custom-scrollbar">
@@ -827,7 +1063,7 @@ export function MeetingPage() {
                             : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100'
                         )}
                       >
-                        未选择议程项
+                        {t('meeting.noAgendaPick')}
                       </button>
                       {agendaListForDisplay.map(({ item }) => {
                         const itemId = String(item.id);
@@ -867,7 +1103,7 @@ export function MeetingPage() {
                                       'inline-flex h-5 w-5 items-center justify-center rounded-md transition-colors',
                                       isActive ? 'hover:bg-white/10' : 'hover:bg-slate-100'
                                     )}
-                                    title={isGroupCollapsed ? '展开附属二级标题' : '折叠附属二级标题'}
+                                    title={isGroupCollapsed ? t('meeting.expandL2') : t('meeting.collapseL2')}
                                   >
                                     {isGroupCollapsed ? (
                                       <ChevronRight className="h-3.5 w-3.5" />
@@ -900,7 +1136,7 @@ export function MeetingPage() {
                   type="text"
                   value={discussionFileName}
                   onChange={(e) => setDiscussionFileName(e.target.value)}
-                  placeholder="请输入要讨论的主题名"
+                  placeholder={t('meeting.phFileTopic')}
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:ring-2 focus:ring-slate-200 outline-none"
                 />
               )}
@@ -909,31 +1145,53 @@ export function MeetingPage() {
                   type="text"
                   value={moderatedCaucusTopic}
                   onChange={(e) => setModeratedCaucusTopic(e.target.value)}
-                  placeholder="请输入有主持核心磋商主题"
+                  placeholder={t('meeting.phModTopic')}
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:ring-2 focus:ring-slate-200 outline-none"
                 />
               )}
             </div>
 
-            <div className="text-slate-400 flex items-center gap-2 font-medium">
+            <div className={cn('flex items-center gap-2 font-medium', timerTheme.status)}>
               <Clock className="w-5 h-5" />
-              {showTotalTimer && totalCountdownSeconds === 0 ? '总时长到' : isRunning ? '正在计时' : timeLeft === 0 ? '时间到' : '准备就绪'}
+              {totalOnlyMode
+                ? totalCountdownSeconds === 0
+                  ? t('meeting.timerTotalEnd')
+                  : isRunning
+                    ? t('meeting.timerRunning')
+                    : t('meeting.timerReady')
+                : showTotalTimer && totalCountdownSeconds === 0
+                  ? t('meeting.timerTotalEnd')
+                  : isRunning
+                    ? t('meeting.timerRunning')
+                    : timeLeft === 0
+                      ? t('meeting.timerDone')
+                      : t('meeting.timerReady')}
             </div>
 
-            <div className="flex-1 flex flex-col items-center justify-center">
-              <div className={cn(
-                "text-[7rem] md:text-[8.5rem] lg:text-[10rem] leading-none font-light tracking-tighter tabular-nums transition-colors duration-500 select-none",
-                timeLeft === 0 ? "text-red-500" : "text-slate-900"
-              )}>
-                {formatTime(timeLeft)}
+            <div
+              className={cn(
+                'flex-1 flex flex-col items-center justify-center rounded-[2rem] border p-4 md:p-5 transition-colors duration-500',
+                timerTheme.panelWrap,
+                timerTheme.panelInner
+              )}
+            >
+              <div
+                className={cn(
+                  'text-[7rem] md:text-[8.5rem] lg:text-[10rem] leading-none font-light tracking-tighter tabular-nums transition-colors duration-500 select-none',
+                  displayMainSeconds === 0 ? timerTheme.digitsZero : timerTheme.digits
+                )}
+              >
+                {formatMainClock(displayMainSeconds)}
               </div>
-              {showTotalTimer && (
+              {showTotalTimer && !totalOnlyMode && (
                 <div className="mt-3 flex flex-col items-center">
-                  <span className="text-xs font-semibold tracking-wider text-slate-400">总时长</span>
-                  <span className={cn(
-                    "mt-1 text-xl md:text-2xl font-medium tabular-nums",
-                    totalCountdownSeconds === 0 ? "text-red-500" : "text-slate-500"
-                  )}>
+                  <span className="text-xs font-semibold tracking-wider text-slate-400">{t('meeting.totalDuration')}</span>
+                  <span
+                    className={cn(
+                      'mt-1 text-xl md:text-2xl font-medium tabular-nums',
+                      totalCountdownSeconds === 0 ? 'text-red-500' : 'text-slate-500'
+                    )}
+                  >
                     {formatLongTime(totalCountdownSeconds === null ? totalElapsed : totalCountdownSeconds)}
                   </span>
                 </div>
@@ -941,15 +1199,33 @@ export function MeetingPage() {
 
               <div className="mt-5 flex items-center justify-center gap-5">
                 <button
-                  onClick={() =>
-                    updateCurrentTimerState((prev) => ({
-                      ...prev,
-                      isRunning: false,
-                      timeLeft: parseInt(prev.customTime, 10) || 120,
-                    }))
-                  }
-                  className="w-14 h-14 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center transition-all hover:bg-slate-200 active:scale-95 outline-none"
-                  title="重置时间"
+                  onClick={() => {
+                    if (totalOnlyMode) {
+                      const v = parseInt(totalDurationInput, 10);
+                      if (!Number.isNaN(v) && v > 0) {
+                        updateCurrentTimerState((prev) => ({
+                          ...prev,
+                          isRunning: false,
+                          totalCountdownSeconds: v,
+                          timeLeft: v,
+                          totalDurationInput: String(v),
+                        }));
+                      } else {
+                        updateCurrentTimerState((prev) => ({ ...prev, isRunning: false }));
+                      }
+                    } else {
+                      updateCurrentTimerState((prev) => ({
+                        ...prev,
+                        isRunning: false,
+                        timeLeft: parseInt(prev.customTime, 10) || 120,
+                      }));
+                    }
+                  }}
+                  className={cn(
+                    'w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 outline-none',
+                    timerTheme.ctrl
+                  )}
+                  title={t('meeting.resetTime')}
                 >
                   <RotateCcw className="w-5 h-5" />
                 </button>
@@ -957,10 +1233,8 @@ export function MeetingPage() {
                 <button
                   onClick={handleToggleTimer}
                   className={cn(
-                    "w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 shadow-md active:scale-95 outline-none border-[5px] border-white ring-1",
-                    isRunning
-                      ? "bg-amber-100 text-amber-600 hover:bg-amber-200 ring-amber-200"
-                      : "bg-emerald-100 text-emerald-600 hover:bg-emerald-200 ring-emerald-200"
+                    'w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 active:scale-95 outline-none border-[5px] border-white',
+                    isRunning ? timerTheme.pause : timerTheme.playGo
                   )}
                 >
                   {isRunning ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current ml-1.5" />}
@@ -969,8 +1243,11 @@ export function MeetingPage() {
                 <button
                   onClick={handleNextSpeaker}
                   disabled={!currentSpeaker}
-                  className="w-14 h-14 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center transition-all hover:bg-slate-200 active:scale-95 disabled:opacity-50 disabled:active:scale-100 outline-none"
-                  title="下一位发言"
+                  className={cn(
+                    'w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 outline-none',
+                    timerTheme.ctrl
+                  )}
+                  title={t('meeting.nextSpeaker')}
                 >
                   <SkipForward className="w-5 h-5 fill-current" />
                 </button>
@@ -978,31 +1255,33 @@ export function MeetingPage() {
             </div>
 
             <div className="mt-3 border-t border-slate-100 pt-3 space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs font-semibold text-slate-500">单位时长设置（秒）</p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    value={customTime}
-                    onChange={(e) =>
-                      updateCurrentTimerState((prev) => ({
-                        ...prev,
-                        customTime: e.target.value,
-                      }))
-                    }
-                    className="w-24 bg-slate-50 border border-slate-200/70 rounded-xl px-3 py-2 text-center text-sm focus:ring-2 focus:ring-slate-300 outline-none font-medium text-slate-700 transition-all"
-                    placeholder="单位秒数"
-                  />
-                  <button
-                    onClick={handleSetTime}
-                    className="text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors px-2 py-1"
-                  >
-                    应用
-                  </button>
+              {!totalOnlyMode && (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs font-semibold text-slate-500">{t('meeting.unitSeconds')}</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={customTime}
+                      onChange={(e) =>
+                        updateCurrentTimerState((prev) => ({
+                          ...prev,
+                          customTime: e.target.value,
+                        }))
+                      }
+                      className="w-24 bg-slate-50 border border-slate-200/70 rounded-xl px-3 py-2 text-center text-sm focus:ring-2 focus:ring-slate-300 outline-none font-medium text-slate-700 transition-all"
+                      placeholder={t('meeting.phUnitSec')}
+                    />
+                    <button
+                      onClick={handleSetTime}
+                      className="text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors px-2 py-1"
+                    >
+                      {t('common.apply')}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs font-semibold text-slate-500">总时长设置（秒）</p>
+                <p className="text-xs font-semibold text-slate-500">{t('meeting.totalSecondsLabel')}</p>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -1014,31 +1293,33 @@ export function MeetingPage() {
                       }))
                     }
                     className="w-24 bg-slate-50 border border-slate-200/70 rounded-xl px-3 py-2 text-center text-sm focus:ring-2 focus:ring-slate-300 outline-none font-medium text-slate-700 transition-all disabled:bg-slate-100"
-                    placeholder="总秒数"
-                    disabled={!showTotalTimer}
+                    placeholder={t('meeting.phTotalSec')}
+                    disabled={!totalOnlyMode && !showTotalTimer}
                   />
                   <button
                     onClick={handleSetTotalDuration}
                     className="text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors px-2 py-1 disabled:opacity-40"
-                    disabled={!showTotalTimer}
+                    disabled={!totalOnlyMode && !showTotalTimer}
                   >
-                    应用
+                    {t('common.apply')}
                   </button>
-                  <button
-                    onClick={() =>
-                      updateCurrentTimerState((prev) => ({
-                        ...prev,
-                        showTotalTimer: !prev.showTotalTimer,
-                      }))
-                    }
-                    className="text-sm font-semibold text-slate-400 hover:text-slate-700 transition-colors px-2 py-1"
-                  >
-                    {showTotalTimer ? '隐藏' : '显示'}
-                  </button>
+                  {!totalOnlyMode && (
+                    <button
+                      onClick={() =>
+                        updateCurrentTimerState((prev) => ({
+                          ...prev,
+                          showTotalTimer: !prev.showTotalTimer,
+                        }))
+                      }
+                      className="text-sm font-semibold text-slate-400 hover:text-slate-700 transition-colors px-2 py-1"
+                    >
+                      {showTotalTimer ? t('common.hide') : t('common.show')}
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs font-semibold text-slate-500">提示音</p>
+                <p className="text-xs font-semibold text-slate-500">{t('meeting.sound')}</p>
                 <button
                   type="button"
                   onClick={() => setIsSoundEnabled((prev) => !prev)}
@@ -1049,14 +1330,14 @@ export function MeetingPage() {
                       : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
                   )}
                 >
-                  {isSoundEnabled ? '已开启（点击关闭）' : '已关闭（点击开启）'}
+                  {isSoundEnabled ? t('meeting.soundOn') : t('meeting.soundOff')}
                 </button>
               </div>
             </div>
           </div>
 
           <div className="lg:col-span-5 flex flex-col min-h-[420px] border-t border-slate-100 pt-3 lg:border-t-0 lg:border-l lg:pl-3 lg:pt-0 lg:border-slate-100">
-            <h2 className="text-xl font-semibold text-slate-900 mb-2.5">发言名单</h2>
+            <h2 className="text-xl font-semibold text-slate-900 mb-2.5">{t('meeting.speakerList')}</h2>
             
             <div className="flex gap-2 mb-3.5">
               <div className="relative flex-1">
@@ -1069,7 +1350,7 @@ export function MeetingPage() {
                   onKeyDown={handleSpeakerInputKeyDown}
                   onFocus={() => setIsSpeakerSearchOpen(true)}
                   onBlur={() => window.setTimeout(() => setIsSpeakerSearchOpen(false), 120)}
-                  placeholder="添加国家..."
+                  placeholder={t('meeting.phAddCountry')}
                   className="w-full bg-slate-50 border border-slate-200/60 rounded-2xl px-4 py-3 text-base focus:ring-2 focus:ring-slate-200 outline-none font-medium placeholder:text-slate-400 transition-all"
                 />
                 {isSpeakerSearchOpen && speakerSuggestions.length > 0 && (
@@ -1087,7 +1368,7 @@ export function MeetingPage() {
                             : 'text-slate-700 hover:bg-slate-50'
                         )}
                       >
-                        {country}
+                        {displayCountry(country)}
                       </button>
                     ))}
                   </div>
@@ -1102,7 +1383,7 @@ export function MeetingPage() {
             </div>
             {discussionMode === 'moderated-caucus' && (
               <p className="mb-3 text-xs text-slate-500">
-                上限 {mainSpeakerCapacity ?? 0} 位（总时长 / 单位时长），当前 {speakers.length} 位
+                {t('meeting.capacityHint', { cap: mainSpeakerCapacity ?? 0, cur: speakers.length })}
               </p>
             )}
 
@@ -1110,7 +1391,7 @@ export function MeetingPage() {
               {!currentSpeaker ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
                   <UserRoundPlus className="w-12 h-12 mb-4 stroke-[1.5]" />
-                  <p className="text-base font-medium">名单为空，请先添加</p>
+                  <p className="text-base font-medium">{t('meeting.emptyList')}</p>
                 </div>
               ) : (
                 speakers.map((speaker, idx) => (
@@ -1127,11 +1408,11 @@ export function MeetingPage() {
                       "font-semibold", 
                       idx === 0 ? "text-lg tracking-wide" : "text-base"
                     )}>
-                      {speaker}
+                      {displayCountry(speaker)}
                     </span>
                     {idx === 0 && (
                       <span className="text-xs font-bold uppercase tracking-wider text-slate-300 bg-white/10 px-3 py-1 rounded-full">
-                        正在发言
+                        {t('meeting.speakingNow')}
                       </span>
                     )}
                     {idx !== 0 && (
@@ -1145,7 +1426,7 @@ export function MeetingPage() {
                             [currentSectionKey]: newArr,
                           }));
                         }}
-                        title="移出名单"
+                        title={t('meeting.removeFromList')}
                       >
                         ×
                       </button>

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useMeeting } from '../context/MeetingContext';
+import { useLanguage } from '../context/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -20,6 +21,7 @@ type DragInsertPosition = 'before' | 'after' | 'end';
 
 export function AgendaArrangementPage() {
   const { agendaItems, setAgendaItems, setCurrentPage, addMeetingLog } = useMeeting();
+  const { t, locale } = useLanguage();
   const [newTitle, setNewTitle] = useState('');
   const [newLevel, setNewLevel] = useState<1 | 2>(1);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -27,13 +29,20 @@ export function AgendaArrangementPage() {
   const [draggingItemId, setDraggingItemId] = useState<number | null>(null);
   const [dragIndicator, setDragIndicator] = useState<{ itemId: number; position: Exclude<DragInsertPosition, 'end'> } | null>(null);
   const [isDraggingToEnd, setIsDraggingToEnd] = useState(false);
+  const colon = locale === 'zh' ? '：' : ': ';
   const formatAgendaItem = (item: { level: 1 | 2; title: string }) =>
-    `${item.level === 1 ? '一级' : '二级'}：${item.title}`;
+    `${item.level === 1 ? t('agenda.formatL1') : t('agenda.formatL2')}${colon}${item.title}`;
+  const agendaStatusLabel = (s: 'normal' | 'postponed' | 'ended') =>
+    s === 'postponed'
+      ? t('meeting.agendaStatusPostponed')
+      : s === 'ended'
+        ? t('meeting.agendaStatusEnded')
+        : t('meeting.agendaStatusNormal');
 
   const handleAdd = () => {
     const cleanedTitle = sanitizeAgendaTitle(newTitle);
     if (!cleanedTitle) {
-      alert('请输入有效的议程标题后再添加。');
+      alert(t('agenda.alertNeedTitle'));
       return;
     }
     const nextItem = {
@@ -46,7 +55,7 @@ export function AgendaArrangementPage() {
       ...agendaItems,
       nextItem
     ]);
-    addMeetingLog('agenda-change', '新增议程项', formatAgendaItem(nextItem));
+    addMeetingLog('agenda-change', t('log.agendaAddTitle'), formatAgendaItem(nextItem));
     setNewTitle('');
   };
 
@@ -54,7 +63,7 @@ export function AgendaArrangementPage() {
     const target = agendaItems.find((item) => item.id === id);
     setAgendaItems(agendaItems.filter(item => item.id !== id));
     if (target) {
-      addMeetingLog('agenda-change', '删除议程项', formatAgendaItem(target));
+      addMeetingLog('agenda-change', t('log.agendaRemoveTitle'), formatAgendaItem(target));
     }
   };
 
@@ -71,7 +80,11 @@ export function AgendaArrangementPage() {
             : item
         )
       );
-      addMeetingLog('agenda-change', '修改议程状态', `${formatAgendaItem(targetItem)} -> ${status}`);
+      addMeetingLog(
+        'agenda-change',
+        t('log.agendaStatusTitle'),
+        `${formatAgendaItem(targetItem)} -> ${agendaStatusLabel(status)}`
+      );
       return;
     }
 
@@ -91,8 +104,12 @@ export function AgendaArrangementPage() {
     );
     addMeetingLog(
       'agenda-change',
-      '修改一级议程组状态',
-      `${formatAgendaItem(targetItem)}（含 ${linkedIds.size - 1} 个二级项） -> ${status}`
+      t('log.agendaGroupTitle'),
+      t('log.agendaGroupDetail', {
+        item: formatAgendaItem(targetItem),
+        n: linkedIds.size - 1,
+        status: agendaStatusLabel(status),
+      })
     );
   };
 
@@ -105,8 +122,11 @@ export function AgendaArrangementPage() {
     setAgendaItems(newItems);
     addMeetingLog(
       'agenda-change',
-      '调整议程序列',
-      `${formatAgendaItem(temp)} 向${direction === -1 ? '上' : '下'}移动`
+      t('log.agendaMoveTitle'),
+      t('log.agendaMoveDetail', {
+        item: formatAgendaItem(temp),
+        dir: direction === -1 ? t('log.agendaMoveUp') : t('log.agendaMoveDown'),
+      })
     );
   };
 
@@ -160,8 +180,16 @@ export function AgendaArrangementPage() {
     ]);
     addMeetingLog(
       'agenda-change',
-      '拖拽调整议程序列',
-      `移动 ${block.length} 项到${position === 'end' ? '末尾' : position === 'before' ? '目标前' : '目标后'}`
+      t('log.agendaDragTitle'),
+      t('log.agendaDragDetail', {
+        n: block.length,
+        pos:
+          position === 'end'
+            ? t('log.agendaPosEnd')
+            : position === 'before'
+              ? t('log.agendaPosBefore')
+              : t('log.agendaPosAfter'),
+      })
     );
   };
 
@@ -186,7 +214,7 @@ export function AgendaArrangementPage() {
       .filter((item): item is { level: 1 | 2; title: string } => Boolean(item));
 
     if (parsed.length === 0) {
-      alert('未识别到可导入的议程内容，请检查格式后重试。');
+      alert(t('agenda.alertImportFail'));
       return;
     }
 
@@ -198,7 +226,7 @@ export function AgendaArrangementPage() {
       status: 'normal' as const,
     }));
     setAgendaItems(importedItems);
-    addMeetingLog('agenda-change', '导入议程单', `导入 ${importedItems.length} 项，覆盖当前议程`);
+    addMeetingLog('agenda-change', t('log.agendaImportTitle'), t('log.agendaImportDetail', { n: importedItems.length }));
     setAgendaImportInput('');
     setIsImportModalOpen(false);
   };
@@ -223,8 +251,8 @@ export function AgendaArrangementPage() {
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-300 pb-8">
       <div className="apple-panel p-8 md:p-10 space-y-2">
-        <h1 className="text-4xl font-semibold tracking-tight text-slate-900">议程安排</h1>
-        <p className="text-lg text-slate-500">请安排会议议程，设置一级和二级标题</p>
+        <h1 className="text-4xl font-semibold tracking-tight text-slate-900">{t('agenda.title')}</h1>
+        <p className="text-lg text-slate-500">{t('agenda.subtitle')}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -233,7 +261,7 @@ export function AgendaArrangementPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Plus className="w-5 h-5 text-slate-700" />
-                添加议程项目
+                {t('agenda.addBlock')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -243,17 +271,17 @@ export function AgendaArrangementPage() {
                   value={newLevel}
                   onChange={(e) => setNewLevel(Number(e.target.value) as 1 | 2)}
                 >
-                  <option value={1}>一级标题</option>
-                  <option value={2}>二级标题</option>
+                  <option value={1}>{t('agenda.level1')}</option>
+                  <option value={2}>{t('agenda.level2')}</option>
                 </select>
                 <Input 
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                  placeholder="输入议程标题..."
+                  placeholder={t('agenda.phTitle')}
                   className="flex-1 rounded-xl border-slate-200"
                 />
-                <Button onClick={handleAdd}>添加</Button>
+                <Button onClick={handleAdd}>{t('common.add')}</Button>
               </div>
             </CardContent>
           </Card>
@@ -262,13 +290,13 @@ export function AgendaArrangementPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <ListTodo className="w-5 h-5 text-slate-700" />
-                当前议程列表
+                {t('agenda.currentList')}
               </CardTitle>
             </CardHeader>
             <CardContent>
               {agendaItems.length === 0 ? (
                 <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                  暂无议程项目，请在上方添加
+                  {t('agenda.emptyList')}
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -322,7 +350,7 @@ export function AgendaArrangementPage() {
                       <div className="flex items-start gap-2 min-w-0 flex-1">
                         <span
                           className="mt-0.5 shrink-0 cursor-grab rounded-md bg-slate-50 p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing"
-                          title={item.level === 1 ? "拖动一级标题（将连带其二级标题）" : "拖动二级标题"}
+                          title={item.level === 1 ? t('agenda.dragL1') : t('agenda.dragL2')}
                         >
                           <GripVertical className="w-4 h-4" />
                         </span>
@@ -349,7 +377,7 @@ export function AgendaArrangementPage() {
                                 : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                             )}
                           >
-                            正常
+                            {t('meeting.agendaStatusNormal')}
                           </button>
                           <button
                             type="button"
@@ -361,7 +389,7 @@ export function AgendaArrangementPage() {
                                 : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                             )}
                           >
-                            延置
+                            {t('meeting.agendaStatusPostponed')}
                           </button>
                           <button
                             type="button"
@@ -373,7 +401,7 @@ export function AgendaArrangementPage() {
                                 : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                             )}
                           >
-                            结束
+                            {t('meeting.agendaStatusEnded')}
                           </button>
                         </div>
                       </div>
@@ -410,7 +438,7 @@ export function AgendaArrangementPage() {
                         : "border-slate-200 text-slate-400"
                     )}
                   >
-                    拖动到此处可置于列表末尾
+                    {t('agenda.dropEnd')}
                   </div>
                 </div>
               )}
@@ -421,26 +449,30 @@ export function AgendaArrangementPage() {
         <div className="lg:col-span-1">
           <Card className="apple-panel border-0 sticky top-6">
             <CardHeader>
-              <CardTitle className="text-base">操作</CardTitle>
+              <CardTitle className="text-base">{t('agenda.actions')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <Button className="w-full" size="lg" onClick={() => setCurrentPage('meeting')}>
-                进入主会议界面
+                {t('agenda.enterMeeting')}
               </Button>
               <Button className="w-full" variant="secondary" onClick={() => setIsImportModalOpen(true)}>
-                一键导入我的议程单
+                {t('agenda.importBtn')}
               </Button>
               <Button
                 className="w-full"
                 variant="outline"
                 onClick={() => {
                   if (agendaItems.length > 0) {
-                    addMeetingLog('agenda-change', '清空议程单', `清空前共 ${agendaItems.length} 项`);
+                    addMeetingLog(
+                      'agenda-change',
+                      t('log.agendaClearTitle'),
+                      t('log.agendaClearDetail', { n: agendaItems.length })
+                    );
                   }
                   setAgendaItems([]);
                 }}
               >
-                清空所有议程
+                {t('agenda.clearAll')}
               </Button>
             </CardContent>
           </Card>
@@ -450,23 +482,23 @@ export function AgendaArrangementPage() {
       <Modal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
-        title="导入我的议程单"
+        title={t('agenda.importModalTitle')}
         className="max-w-2xl"
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-500">
-            将你的议程单整段粘贴进来，点击“一键导入”后会自动识别一级/二级标题并覆盖当前议程。
+            {t('agenda.importModalBody')}
           </p>
           <textarea
             value={agendaImportInput}
             onChange={(e) => setAgendaImportInput(e.target.value)}
-            placeholder={'支持示例：\n1. 开场与程序确认\n1.1 主席介绍会议流程\n二级：自由磋商\n    文件讨论'}
+            placeholder={t('agenda.importModalPh')}
             className="w-full min-h-64 rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-300/60"
           />
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsImportModalOpen(false)}>取消</Button>
+            <Button variant="outline" onClick={() => setIsImportModalOpen(false)}>{t('common.cancel')}</Button>
             <Button onClick={handleImportMyAgenda} disabled={!agendaImportInput.trim()}>
-              一键导入
+              {t('agenda.importConfirm')}
             </Button>
           </div>
         </div>

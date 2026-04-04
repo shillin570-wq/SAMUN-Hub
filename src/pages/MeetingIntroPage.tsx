@@ -1,8 +1,10 @@
 import React from 'react';
 import { useMeeting } from '../context/MeetingContext';
+import { useLanguage } from '../context/LanguageContext';
 
 export function MeetingIntroPage() {
   const { meetingInfo, enterMeeting } = useMeeting();
+  const { t, displayCountry } = useLanguage();
 
   return (
     <div className="h-full w-full relative overflow-hidden bg-slate-950 stage-entrance">
@@ -17,15 +19,15 @@ export function MeetingIntroPage() {
           <div className="space-y-4 stage-float">
             <p className="text-sm tracking-[0.38em] font-semibold text-slate-300/90">SAMUN</p>
             <h1 className="text-5xl md:text-7xl font-semibold tracking-tight text-white drop-shadow-[0_8px_24px_rgba(210,83,101,0.35)]">
-              {meetingInfo.committee || '未设置委员会'}
+              {displayCountry(meetingInfo.committee) || t('common.committeeUnset')}
             </h1>
             <p className="text-xl md:text-2xl text-slate-200/90 max-w-4xl mx-auto">
-              {meetingInfo.topic || '请先在会议设置中填写本次会议议题'}
+              {meetingInfo.topic || t('common.topicUnsetShort')}
             </p>
           </div>
 
           <div className="absolute bottom-16 left-1/2 -translate-x-1/2 text-slate-300/85 text-sm tracking-[0.2em] uppercase">
-            Tap to Enter
+            {t('intro.tapEnter')}
           </div>
         </div>
       </button>

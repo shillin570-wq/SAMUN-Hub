@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
+import { LanguageProvider } from './context/LanguageContext';
 import { MeetingProvider, useMeeting } from './context/MeetingContext';
 import { Sidebar } from './components/Sidebar';
 import { cn } from './lib/utils';
@@ -173,8 +174,10 @@ export default function App() {
   };
 
   return (
-    <MeetingProvider>
-      <AppLayout />
-    </MeetingProvider>
+    <LanguageProvider>
+      <MeetingProvider>
+        <AppLayout />
+      </MeetingProvider>
+    </LanguageProvider>
   );
 }
